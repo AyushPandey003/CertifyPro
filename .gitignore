@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+*.py
+*.csv
+*.txt
+/migrations
+pnpm-lock.yaml
+knowledge/token.json
+knowledge/data_with_hashes.json
