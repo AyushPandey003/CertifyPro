@@ -1,253 +1,428 @@
 "use client"
 
-import { VerificationResult } from "@/components/verification-result"
-import { HashVerifier, VerificationResult as VerificationResultType } from "@/lib/hash-verifier"
+import { useState, useRef, useEffect } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import { 
+  QrCode, 
+  Camera, 
+  Upload, 
+  Search, 
+  CheckCircle, 
+  XCircle, 
+  AlertCircle,
+  FileText,
+  User,
+  Mail,
+  Hash
+} from 'lucide-react'
+import { validateHash } from '@/lib/qr-generator'
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, QrCode, Camera, Upload, CheckCircle, XCircle } from "lucide-react"
-import Link from "next/link"
-import { QRScanner } from "@/components/qr-scanner"
+interface VerificationResult {
+  isValid: boolean
+  hash: string
+  recipientData?: {
+    name: string
+    email: string
+    registrationNumber?: string
+    teamId?: string
+    event: string
+    issuedAt: string
+  }
+  error?: string
+}
 
 export default function VerifyPage() {
-
-  const [activeTab, setActiveTab] = useState("scanner")
-  const [verificationResult, setVerificationResult] = useState<VerificationResultType | null>(null)
-  const [scanHistory, setScanHistory] = useState<{
-    id: number
-    hash: string
-    result: VerificationResultType
-    timestamp: Date
-  }[]>([])
+  const [verificationMethod, setVerificationMethod] = useState<'scan' | 'manual' | 'upload'>('scan')
+  const [manualHash, setManualHash] = useState('')
+  const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null)
   const [isScanning, setIsScanning] = useState(false)
+  const [scanError, setScanError] = useState<string | null>(null)
+  
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
-  const handleVerificationResult = (result: VerificationResultType, hash?: string) => {
-    setVerificationResult(result)
-    if (result) {
-      setScanHistory((prev) => [
-        {
-          id: Date.now(),
-          hash: hash || (result.certificateData?.registrationNumber || ""),
-          result: result,
-          timestamp: new Date(),
-        },
-        ...prev,
-      ])
+  // Mock database for demo - in production, this would query your actual database
+  const mockDatabase = [
+    {
+      hash: "369c1e3444d8ae3f63412d05663acd8476a3b198036903976c0e1632d9368434",
+      recipientData: {
+        name: "MEHUL KHARE",
+        email: "mehul.khare@example.com",
+        registrationNumber: "24BAI10631",
+        teamId: "1",
+        event: "LinPack Club Event 2024",
+        issuedAt: "2024-12-20T10:00:00Z"
+      }
+    },
+    {
+      hash: "097e5036fed7680e4180b73e2e985a16fdbc723747bb19b076e94c155946b5d0",
+      recipientData: {
+        name: "PRAYUSH PATEL",
+        email: "prayush.patel@example.com",
+        registrationNumber: "24BCE10488",
+        teamId: "1",
+        event: "LinPack Club Event 2024",
+        issuedAt: "2024-12-20T10:00:00Z"
+      }
+    },
+    {
+      hash: "cfef4f1560803ec02f0b0b62e7dae9836e5713da487b34542d1219190812ed01",
+      recipientData: {
+        name: "Priyanshi Solanki",
+        email: "priyanshi.solanki@example.com",
+        registrationNumber: "24BCE10518",
+        teamId: "2",
+        event: "LinPack Club Event 2024",
+        issuedAt: "2024-12-20T10:00:00Z"
+      }
+    }
+  ]
+
+  useEffect(() => {
+    if (verificationMethod === 'scan') {
+      startCamera()
+    } else {
+      stopCamera()
+    }
+
+    return () => {
+      stopCamera()
+    }
+  }, [verificationMethod])
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      })
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        streamRef.current = stream
+        setIsScanning(true)
+        setScanError(null)
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error)
+      setScanError('Unable to access camera. Please check permissions.')
     }
   }
 
-  const handleScan = async (hash: string) => {
-    setIsScanning(true)
-    try {
-      const result = await HashVerifier.verifyHash(hash)
-      handleVerificationResult(result, hash)
-    } catch {
-      handleVerificationResult({ isValid: false, error: "Verification failed", verifiedAt: new Date() }, hash)
-    } finally {
-      setIsScanning(false)
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
     }
+    setIsScanning(false)
+  }
+
+  const captureFrame = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      const context = canvas.getContext('2d')
+      
+      if (context) {
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        context.drawImage(video, 0, 0)
+        
+        // In production, you would use a QR code detection library here
+        // For demo purposes, we'll simulate QR code detection
+        simulateQRCodeDetection()
+      }
+    }
+  }
+
+  const simulateQRCodeDetection = () => {
+    // Simulate processing time
+    setTimeout(() => {
+      // For demo, randomly select a hash from our mock database
+      const randomHash = mockDatabase[Math.floor(Math.random() * mockDatabase.length)].hash
+      verifyHash(randomHash)
+    }, 1000)
+  }
+
+  const verifyHash = (hash: string) => {
+    // Validate hash format
+    if (!validateHash(hash)) {
+      setVerificationResult({
+        isValid: false,
+        hash,
+        error: 'Invalid hash format'
+      })
+      return
+    }
+
+    // Search database for hash
+    const record = mockDatabase.find(entry => entry.hash === hash)
+    
+    if (record) {
+      setVerificationResult({
+        isValid: true,
+        hash,
+        recipientData: record.recipientData
+      })
+    } else {
+      setVerificationResult({
+        isValid: false,
+        hash,
+        error: 'Hash not found in database'
+      })
+    }
+  }
+
+  const handleManualVerification = () => {
+    if (manualHash.trim()) {
+      verifyHash(manualHash.trim())
+    }
+  }
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      // In production, you would process the image file to extract QR code
+      // For demo purposes, we'll simulate this
+      setTimeout(() => {
+        const randomHash = mockDatabase[Math.floor(Math.random() * mockDatabase.length)].hash
+        verifyHash(randomHash)
+      }, 1000)
+    }
+  }
+
+  const resetVerification = () => {
+    setVerificationResult(null)
+    setManualHash('')
+    setScanError(null)
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Back to Dashboard</span>
-            </Link>
-            <div className="flex items-center gap-2">
-              <QrCode className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-black text-foreground">Certificate Verification</h1>
+    <div className="container mx-auto py-8 space-y-6">
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-bold">Verify Certificates</h1>
+        <p className="text-muted-foreground">
+          Scan QR codes or manually verify certificate hashes
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {/* Verification Methods */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Verification Method</CardTitle>
+            <CardDescription>Choose how to verify the certificate</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Button
+                variant={verificationMethod === 'scan' ? 'default' : 'outline'}
+                className="w-full justify-start"
+                onClick={() => setVerificationMethod('scan')}
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                Scan QR Code
+              </Button>
+              
+              <Button
+                variant={verificationMethod === 'manual' ? 'default' : 'outline'}
+                className="w-full justify-start"
+                onClick={() => setVerificationMethod('manual')}
+              >
+                <Hash className="h-4 w-4 mr-2" />
+                Manual Hash Input
+              </Button>
+              
+              <Button
+                variant={verificationMethod === 'upload' ? 'default' : 'outline'}
+                className="w-full justify-start"
+                onClick={() => setVerificationMethod('upload')}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Image
+              </Button>
             </div>
-          </div>
-        </div>
-      </header>
+          </CardContent>
+        </Card>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-black text-foreground mb-2">Verify Certificates</h2>
-          <p className="text-muted-foreground">
-            Scan QR codes to instantly verify the authenticity of certificates and event passes
-          </p>
-        </div>
+        {/* Verification Interface */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>
+              {verificationMethod === 'scan' && 'QR Code Scanner'}
+              {verificationMethod === 'manual' && 'Manual Hash Verification'}
+              {verificationMethod === 'upload' && 'Image Upload'}
+            </CardTitle>
+            <CardDescription>
+              {verificationMethod === 'scan' && 'Point your camera at a QR code'}
+              {verificationMethod === 'manual' && 'Enter the hash manually'}
+              {verificationMethod === 'upload' && 'Upload an image containing a QR code'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {verificationMethod === 'scan' && (
+              <div className="space-y-4">
+                {isScanning ? (
+                  <div className="relative">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      className="w-full max-w-md mx-auto border rounded-lg"
+                    />
+                    <Button
+                      onClick={captureFrame}
+                      className="absolute bottom-4 left-1/2 transform -translate-x-1/2"
+                      size="sm"
+                    >
+                      <QrCode className="h-4 w-4 mr-2" />
+                      Scan QR Code
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Camera className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">Camera not available</p>
+                  </div>
+                )}
+                
+                {scanError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-600">{scanError}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="scanner" className="flex items-center gap-2">
-              <Camera className="h-4 w-4" />
-              QR Scanner
-            </TabsTrigger>
-            <TabsTrigger value="manual" className="flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              Manual Entry
-            </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4" />
-              Scan History
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="scanner" className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Camera className="h-5 w-5" />
-                    QR Code Scanner
-                  </CardTitle>
-                  <CardDescription>
-                    Use your camera to scan QR codes from certificates and event passes
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <QRScanner onScan={handleScan} isScanning={isScanning} />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Verification Result</CardTitle>
-                  <CardDescription>Certificate details from scanned QR code</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {verificationResult ? (
-                    <VerificationResult result={verificationResult} onReset={() => setVerificationResult(null)} />
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <QrCode className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p>Scan a QR code to see verification results</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="manual" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Manual Hash Verification</CardTitle>
-                <CardDescription>
-                  Enter a hash manually to verify certificate authenticity
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            {verificationMethod === 'manual' && (
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Certificate Hash</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-input rounded-md"
-                    placeholder="Enter the 64-character SHA-256 hash..."
+                  <Label htmlFor="hashInput">Certificate Hash</Label>
+                  <Input
+                    id="hashInput"
+                    value={manualHash}
+                    onChange={(e) => setManualHash(e.target.value)}
+                    placeholder="Enter 64-character hash..."
+                    className="font-mono text-sm"
                   />
                 </div>
-                <Button className="w-full">Verify Hash</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                <Button onClick={handleManualVerification} className="w-full">
+                  <Search className="h-4 w-4 mr-2" />
+                  Verify Hash
+                </Button>
+              </div>
+            )}
 
-          <TabsContent value="history" className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Recent Scans</h3>
-              <Button variant="outline" size="sm">Clear History</Button>
-            </div>
+            {verificationMethod === 'upload' && (
+              <div className="space-y-4">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                  <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="max-w-xs mx-auto"
+                  />
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Upload an image containing a QR code
+                  </p>
+                </div>
+              </div>
+            )}
 
-            <div className="space-y-4">
-              {scanHistory.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center">
-                    <QrCode className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No scan history yet</p>
-                    <p className="text-sm text-muted-foreground">Scan a QR code to see results here</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                scanHistory.map((scan) => (
-                  <Card key={scan.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {scan.result.isValid ? (
-                            <CheckCircle className="h-5 w-5 text-green-500" />
-                          ) : (
-                            <XCircle className="h-5 w-5 text-red-500" />
-                          )}
-                          <div>
-                            <p className="font-medium">
-                              {scan.result.isValid ? "Valid Certificate" : "Invalid Certificate"}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {scan.timestamp.toLocaleString()}
-                            </p>
-                          </div>
+            {/* Verification Result */}
+            {verificationResult && (
+              <div className="space-y-4">
+                <Separator />
+                
+                <div className={`p-4 rounded-lg border ${
+                  verificationResult.isValid 
+                    ? 'bg-green-50 border-green-200' 
+                    : 'bg-red-50 border-red-200'
+                }`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    {verificationResult.isValid ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-red-600" />
+                    )}
+                    <span className={`font-medium ${
+                      verificationResult.isValid ? 'text-green-800' : 'text-red-800'
+                    }`}>
+                      {verificationResult.isValid ? 'Valid Certificate' : 'Invalid Certificate'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Hash className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-mono text-xs break-all">
+                        {verificationResult.hash}
+                      </span>
+                    </div>
+
+                    {verificationResult.recipientData && (
+                      <div className="space-y-2 pt-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="h-4 w-4 text-green-600" />
+                          <span className="font-medium">{verificationResult.recipientData.name}</span>
                         </div>
-                        <div className="text-right">
-                          <Badge variant={scan.result.isValid ? "default" : "destructive"}>
-                            {scan.result.isValid ? "Valid" : "Invalid"}
-                          </Badge>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Hash: {scan.hash.substring(0, 16)}...
-                          </p>
+                        
+                        <div className="flex items-center gap-2 text-sm">
+                          <Mail className="h-4 w-4 text-green-600" />
+                          <span>{verificationResult.recipientData.email}</span>
+                        </div>
+                        
+                        {verificationResult.recipientData.registrationNumber && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <FileText className="h-4 w-4 text-green-600" />
+                            <span>Reg: {verificationResult.recipientData.registrationNumber}</span>
+                          </div>
+                        )}
+                        
+                        {verificationResult.recipientData.teamId && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <FileText className="h-4 w-4 text-green-600" />
+                            <span>Team: {verificationResult.recipientData.teamId}</span>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center gap-2 text-sm">
+                          <FileText className="h-4 w-4 text-green-600" />
+                          <span>{verificationResult.recipientData.event}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 text-sm">
+                          <FileText className="h-4 w-4 text-green-600" />
+                          <span>Issued: {new Date(verificationResult.recipientData.issuedAt).toLocaleDateString()}</span>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+                    )}
 
-        {/* Quick Stats */}
-        <div className="mt-12">
-          <h3 className="text-lg font-semibold mb-4">Verification Statistics</h3>
-          <div className="grid md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {scanHistory.filter((scan) => scan.result.isValid).length}
+                    {verificationResult.error && (
+                      <div className="flex items-center gap-2 text-sm text-red-600">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{verificationResult.error}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground">Valid Certificates</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-red-600">
-                  {scanHistory.filter((scan) => !scan.result.isValid).length}
-                </div>
-                <p className="text-sm text-muted-foreground">Invalid Attempts</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-blue-600">{scanHistory.length}</div>
-                <p className="text-sm text-muted-foreground">Total Scans</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-purple-600">
-                  {scanHistory.length > 0
-                    ? Math.round(
-                        (scanHistory.filter((scan) => scan.result.isValid).length / scanHistory.length) * 100,
-                      )
-                    : 0}
-                  %
-                </div>
-                <p className="text-sm text-muted-foreground">Success Rate</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+
+                <Button onClick={resetVerification} variant="outline" className="w-full">
+                  Verify Another Certificate
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Hidden canvas for QR code processing */}
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   )
 }

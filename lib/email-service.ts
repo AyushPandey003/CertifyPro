@@ -24,8 +24,74 @@ export interface EmailBatch {
   error?: string
 }
 
+export interface GmailCredentials {
+  clientId: string
+  clientSecret: string
+  refreshToken?: string
+  accessToken?: string
+}
+
 // In-memory storage for demo - use database in production
 const emailBatches = new Map<string, EmailBatch>()
+
+/**
+ * Send email using Gmail API (similar to Python emailpass.py)
+ * This would require proper OAuth2 setup in production
+ */
+export async function sendEmailWithGmail(
+  options: EmailOptions
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    // Call serverless route which handles Gmail send if connected
+    const resp = await fetch('/api/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: options.to,
+        subject: options.subject,
+        body: options.body,
+        attachments: options.attachments?.map(a => ({
+          filename: a.filename,
+            content: a.content.toString('base64'),
+            contentType: a.contentType
+        }))
+      })
+    })
+    const json = await resp.json()
+    if (!resp.ok || !json.success) {
+      return { success: false, error: json.error || 'Gmail send failed' }
+    }
+    return { success: true, messageId: json.messageId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+}
+
+/**
+ * Send email with certificate attachment
+ */
+export async function sendCertificateEmail(
+  recipient: { email: string; name: string },
+  certificateBuffer: Buffer,
+  subject: string,
+  body: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const emailOptions: EmailOptions = {
+    to: recipient.email,
+    subject: subject.replace(/\{\{name\}\}/g, recipient.name),
+    body: body.replace(/\{\{name\}\}/g, recipient.name),
+    attachments: [{
+      filename: `${recipient.name}_certificate.png`,
+  content: certificateBuffer,
+      contentType: 'image/png'
+    }]
+  }
+  // Always attempt real Gmail send via API route
+  return sendEmailWithGmail(emailOptions)
+}
 
 export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
@@ -89,6 +155,51 @@ export async function sendBulkEmails(
   return { batchId }
 }
 
+/**
+ * Send bulk certificate emails
+ */
+export interface CertificateBatchProgress {
+  batchId: string
+  sent: number
+  failed: number
+  total: number
+  progress: number // 0-100
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+}
+
+export async function sendBulkCertificateEmails(
+  batchId: string,
+  recipients: Array<{ 
+    email: string; 
+    name: string; 
+    certificateBuffer: Buffer | string;
+    customFields?: Record<string, string> 
+  }>,
+  subject: string,
+  body: string,
+  onProgress?: (p: CertificateBatchProgress) => void
+): Promise<{ batchId: string }> {
+  const batch: EmailBatch = {
+    id: batchId,
+    name: `Certificate Email Batch ${batchId}`,
+    recipients: recipients.map(r => r.email),
+    subject,
+    body,
+    status: 'pending',
+    progress: 0,
+    sent: 0,
+    failed: 0,
+    createdAt: new Date()
+  }
+
+  emailBatches.set(batchId, batch)
+
+  // Start processing in background
+  processCertificateEmailBatch(batchId, recipients, subject, body, onProgress)
+
+  return { batchId }
+}
+
 async function processEmailBatch(
   batchId: string,
   recipients: Array<{ email: string; name: string; customFields?: Record<string, string> }>,
@@ -146,6 +257,71 @@ async function processEmailBatch(
   batch.status = 'completed'
   batch.completedAt = new Date()
   emailBatches.set(batchId, batch)
+}
+
+async function processCertificateEmailBatch(
+  batchId: string,
+  recipients: Array<{ 
+    email: string; 
+    name: string; 
+    certificateBuffer: Buffer | string;
+    customFields?: Record<string, string> 
+  }>,
+  subject: string,
+  body: string,
+  onProgress?: (p: CertificateBatchProgress) => void
+) {
+  const batch = emailBatches.get(batchId)
+  if (!batch) return
+
+  batch.status = 'processing'
+  emailBatches.set(batchId, batch)
+
+  for (let i = 0; i < recipients.length; i++) {
+    const recipient = recipients[i]
+    
+    // Personalize email content
+    let personalizedSubject = subject
+    let personalizedBody = body
+    
+    // Replace placeholders
+    personalizedSubject = personalizedSubject.replace(/\{\{name\}\}/g, recipient.name)
+    personalizedBody = personalizedBody.replace(/\{\{name\}\}/g, recipient.name)
+    
+    if (recipient.customFields) {
+      Object.entries(recipient.customFields).forEach(([key, value]) => {
+        const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g')
+        personalizedSubject = personalizedSubject.replace(placeholder, value)
+        personalizedBody = personalizedBody.replace(placeholder, value)
+      })
+    }
+
+    const buffer: Buffer = typeof recipient.certificateBuffer === 'string'
+      ? Buffer.from(recipient.certificateBuffer, 'base64')
+      : recipient.certificateBuffer
+
+  const result = await sendCertificateEmail(recipient, buffer, personalizedSubject, personalizedBody)
+
+    if (result.success) {
+      batch.sent++
+    } else {
+      batch.failed++
+    }
+
+    batch.progress = Math.round(((i + 1) / recipients.length) * 100)
+  emailBatches.set(batchId, batch)
+  onProgress?.({ batchId, sent: batch.sent, failed: batch.failed, total: recipients.length, progress: batch.progress, status: batch.status })
+
+    // Rate limiting - send max 10 emails per minute
+    if (i < recipients.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 6000)) // 6 seconds between emails
+    }
+  }
+
+  batch.status = 'completed'
+  batch.completedAt = new Date()
+  emailBatches.set(batchId, batch)
+  onProgress?.({ batchId, sent: batch.sent, failed: batch.failed, total: recipients.length, progress: batch.progress, status: batch.status })
 }
 
 export async function getEmailBatch(batchId: string): Promise<EmailBatch | null> {

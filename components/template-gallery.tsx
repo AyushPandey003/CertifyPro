@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImageIcon, Loader2, Download, Eye, Star } from "lucide-react"
-import type { PexelsImage } from "@/lib/pexels-service"
 import Image from "next/image"
 
 interface TemplateGalleryProps {
@@ -18,7 +17,12 @@ export interface CertificateTemplate {
 	name: string
 	category: string
 	description: string
-	image: PexelsImage
+	image: {
+		url: string
+		width: number
+		height: number
+		alt: string
+	}
 	tags: string[]
 	difficulty: 'beginner' | 'intermediate' | 'advanced'
 }
@@ -42,15 +46,8 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 		try {
 			setLoading(true)
 			setError("")
-			
-			// Fetch Pexels images for different categories
-			const [certificateImages, businessImages, celebrationImages] = await Promise.all([
-				fetch('/api/pexels/search?category=certificates').then(r => r.json()),
-				fetch('/api/pexels/search?category=business').then(r => r.json()),
-				fetch('/api/pexels/search?category=celebration').then(r => r.json()),
-			])
-
-			// Create template objects
+			// Build templates with placeholder images (replace with Cloudinary resources if desired)
+			const placeholder = createPlaceholderImage()
 			const templateData: CertificateTemplate[] = [
 				// Academic Templates
 				{
@@ -58,7 +55,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Classic Diploma",
 					category: "academic",
 					description: "Traditional academic certificate with elegant typography",
-					image: certificateImages.photos?.[0] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["academic", "diploma", "traditional", "elegant"],
 					difficulty: "beginner"
 				},
@@ -67,7 +64,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Modern Achievement",
 					category: "academic",
 					description: "Contemporary design for academic accomplishments",
-					image: certificateImages.photos?.[1] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["academic", "modern", "achievement", "clean"],
 					difficulty: "intermediate"
 				},
@@ -77,7 +74,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Professional Recognition",
 					category: "business",
 					description: "Corporate certificate for professional achievements",
-					image: businessImages.photos?.[0] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["business", "professional", "corporate", "recognition"],
 					difficulty: "intermediate"
 				},
@@ -86,7 +83,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Executive Award",
 					category: "business",
 					description: "Premium design for executive-level recognition",
-					image: businessImages.photos?.[1] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["business", "executive", "premium", "award"],
 					difficulty: "advanced"
 				},
@@ -96,7 +93,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Excellence Certificate",
 					category: "achievement",
 					description: "Celebrate outstanding performance and excellence",
-					image: celebrationImages.photos?.[0] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["achievement", "excellence", "performance", "celebration"],
 					difficulty: "beginner"
 				},
@@ -105,7 +102,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Innovation Award",
 					category: "achievement",
 					description: "Recognize innovative thinking and creativity",
-					image: celebrationImages.photos?.[1] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["achievement", "innovation", "creativity", "award"],
 					difficulty: "intermediate"
 				},
@@ -115,7 +112,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Event Participation",
 					category: "event",
 					description: "Certificate for event participation and engagement",
-					image: celebrationImages.photos?.[2] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["event", "participation", "engagement", "celebration"],
 					difficulty: "beginner"
 				},
@@ -124,7 +121,7 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 					name: "Workshop Completion",
 					category: "event",
 					description: "Professional workshop completion certificate",
-					image: certificateImages.photos?.[2] || createPlaceholderImage(),
+					image: placeholder,
 					tags: ["event", "workshop", "completion", "professional"],
 					difficulty: "intermediate"
 				},
@@ -143,23 +140,10 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 		fetchTemplates()
 	}, [fetchTemplates])
 
-	const createPlaceholderImage = (): PexelsImage => ({
-		id: 0,
+	const createPlaceholderImage = () => ({
+		url: "",
 		width: 800,
 		height: 600,
-		url: "",
-		photographer: "Placeholder",
-		photographer_url: "",
-		src: {
-			original: "",
-			large2x: "",
-			large: "",
-			medium: "",
-			small: "",
-			portrait: "",
-			landscape: "",
-			tiny: ""
-		},
 		alt: "Template placeholder"
 	})
 
@@ -219,11 +203,13 @@ export function TemplateGallery({ onTemplateSelect }: TemplateGalleryProps) {
 							>
 								<CardHeader className="p-0">
 									<div className="relative aspect-video overflow-hidden rounded-t-lg">
-										{template.image.src?.medium ? (
+										{template.image.url ? (
 											<Image
-												src={template.image.src.medium}
+												src={template.image.url}
 												alt={template.image.alt || template.name}
 												className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+												width={template.image.width}
+												height={template.image.height}
 											/>
 										) : (
 											<div className="w-full h-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">

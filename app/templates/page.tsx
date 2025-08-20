@@ -17,7 +17,7 @@ export default function TemplatesPage() {
 		const canvasWidth = 800
 		const canvasHeight = 600
 
-		const backgroundImageUrl = template.image?.src?.landscape || template.image?.src?.large || template.image?.src?.large2x || ""
+		const backgroundImageUrl = template.image?.url || ""
 
 		const editorState = {
 			elements: [
@@ -101,8 +101,7 @@ export default function TemplatesPage() {
 						<Sparkles className="h-8 w-8 text-primary" />
 					</div>
 					<p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-						Choose from our curated collection of certificate templates, powered by high-quality 
-						stock photos from Pexels. Start with a professional design and customize it to your needs.
+						Choose from our curated collection of certificate templates. Start with a professional design and customize it to your needs.
 					</p>
 				</div>
 

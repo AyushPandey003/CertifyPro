@@ -9,6 +9,7 @@ import { DashboardOverview } from "@/components/dashboard-overview"
 import { DashboardProjects } from "@/components/dashboard-projects"
 import { DashboardTemplates } from "@/components/dashboard-templates"
 import { DashboardSettings } from "@/components/dashboard-settings"
+import { DashboardGeneration } from "@/components/dashboard-generation"
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("overview")
@@ -21,6 +22,8 @@ export default function DashboardPage() {
         return <DashboardProjects />
       case "templates":
         return <DashboardTemplates />
+      case "generation":
+        return <DashboardGeneration />
       case "settings":
         return <DashboardSettings />
       default:

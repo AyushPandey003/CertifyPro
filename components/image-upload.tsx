@@ -4,9 +4,8 @@ import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, X, ImageIcon, Cloud, Link, Search } from "lucide-react"
-import { UploadButton } from "@/lib/uploadthing"
-import { PexelsImagePicker } from "./pexels-image-picker"
+import { Upload, X, ImageIcon, Cloud, Link, CloudUpload } from "lucide-react"
+import { CloudinaryWidgetButton } from "@/components/cloudinary-widget"
 import Image from "next/image"
 
 interface ImageUploadProps {
@@ -19,22 +18,19 @@ export function ImageUpload({ onImageSelect, currentSrc, currentAlt }: ImageUplo
   // Removed unused selectedImage state
   const [previewUrl, setPreviewUrl] = useState<string>(currentSrc || "")
   const [altText, setAltText] = useState<string>(currentAlt || "")
-  const [isUploading, setIsUploading] = useState(false)
-  const [showPexelsPicker, setShowPexelsPicker] = useState(false)
+  const [isCloudinaryUploading, setIsCloudinaryUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cloudinaryFileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file && file.type.startsWith('image/')) {
-      // setSelectedImage(file) // Removed unused state
-      
       // Create preview URL
       const reader = new FileReader()
       reader.onload = (e) => {
         const result = e.target?.result as string
         setPreviewUrl(result)
         setAltText(file.name)
-        
         // Notify parent component
         onImageSelect({
           src: result,
@@ -64,7 +60,6 @@ export function ImageUpload({ onImageSelect, currentSrc, currentAlt }: ImageUplo
   }
 
   const clearImage = () => {
-    // setSelectedImage(null) // Removed unused state
     setPreviewUrl("")
     setAltText("")
     if (fileInputRef.current) {
@@ -80,76 +75,93 @@ export function ImageUpload({ onImageSelect, currentSrc, currentAlt }: ImageUplo
     fileInputRef.current?.click()
   }
 
-  type UploadThingResult = { url: string; name?: string }[];
+  const uploadToCloudinary = async (file: File) => {
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+    if (!cloudName || !uploadPreset) {
+      alert("Cloudinary not configured. Set NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME and NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET.")
+      return
+    }
 
-  const handleUploadComplete = (res: UploadThingResult) => {
-    setIsUploading(false)
-    if (res && res[0]) {
-      const uploadedFile = res[0]
-      const imageUrl = uploadedFile.url
-      const fileName = uploadedFile.name || "Uploaded Image"
-      
+    try {
+      setIsCloudinaryUploading(true)
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("upload_preset", uploadPreset)
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: "POST",
+        body: formData
+      })
+      if (!res.ok) throw new Error("Cloudinary upload failed")
+      const data = await res.json()
+
+      const imageUrl = data.secure_url as string
+      const fileName = (data.original_filename as string) || "Uploaded Image"
+
       setPreviewUrl(imageUrl)
       setAltText(fileName)
-      
-      onImageSelect({
-        src: imageUrl,
-        alt: fileName
-      })
+
+      onImageSelect({ src: imageUrl, alt: fileName })
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : "Upload failed")
+    } finally {
+      setIsCloudinaryUploading(false)
     }
   }
 
-  const handleUploadError = (error: Error) => {
-    setIsUploading(false)
-    console.error("Upload failed:", error)
-    alert(`Upload failed: ${error.message}`)
-  }
-
-  const handlePexelsImageSelect = (imageData: { src: string; alt: string }) => {
-    setPreviewUrl(imageData.src)
-    setAltText(imageData.alt)
-    onImageSelect(imageData)
+  const handleCloudinaryFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      await uploadToCloudinary(file)
+      // reset value so selecting the same file again triggers onChange
+      event.currentTarget.value = ""
+    }
   }
 
   return (
     <div className="space-y-4">
-      {/* Pexels Stock Photos */}
-      <div>
-        <Label className="text-xs flex items-center gap-2">
-          <Search className="h-3 w-3" />
-          Stock Photos (Pexels)
-        </Label>
-        <div className="mt-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="w-full bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 hover:from-blue-100 hover:to-purple-100"
-            onClick={() => setShowPexelsPicker(true)}
-          >
-            <Search className="h-4 w-4 mr-2" />
-            Browse Stock Photos
-          </Button>
-        </div>
-      </div>
-
-      {/* UploadThing Cloud Upload */}
+      {/* Cloudinary Upload */}
       <div>
         <Label className="text-xs flex items-center gap-2">
           <Cloud className="h-3 w-3" />
-          Cloud Upload (Recommended)
+          Cloud Upload (Cloudinary)
         </Label>
         <div className="mt-2">
-          <UploadButton
-            endpoint="imageUploader"
-            onClientUploadComplete={handleUploadComplete}
-            onUploadError={handleUploadError}
-            onUploadBegin={() => setIsUploading(true)}
-            className="w-full"
-          />
-          {isUploading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <CloudinaryWidgetButton
+              onImageSelect={({ src, alt }) => {
+                setPreviewUrl(src)
+                setAltText(alt)
+                onImageSelect({ src, alt })
+              }}
+              label="Open Cloudinary Modal (Drive, Dropbox, etc.)"
+              sources={["local","url","camera","google_drive","dropbox","unsplash","shutterstock","istock","pexels","pixabay","freepik","flaticon","flickr"]}
+            />
+            <div>
+              <input
+                ref={cloudinaryFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleCloudinaryFileChange}
+                className="hidden"
+              />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full"
+                onClick={() => cloudinaryFileInputRef.current?.click()}
+              >
+                <CloudUpload className="h-4 w-4 mr-2" />
+                Upload Directly
+              </Button>
+            </div>
+          </div>
+          {isCloudinaryUploading && (
             <div className="mt-2 text-xs text-blue-600 flex items-center gap-2">
               <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
-              Uploading to cloud...
+              Uploading to Cloudinary...
             </div>
           )}
         </div>
@@ -245,16 +257,8 @@ export function ImageUpload({ onImageSelect, currentSrc, currentAlt }: ImageUplo
         <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
           <ImageIcon className="h-12 w-12 text-gray-400 mx-auto mb-2" />
           <p className="text-sm text-gray-500">No image selected</p>
-          <p className="text-xs text-gray-400">Choose from stock photos, upload to cloud, choose local file, or enter URL</p>
+          <p className="text-xs text-gray-400">Upload to Cloudinary, choose local file, or enter URL</p>
         </div>
-      )}
-
-      {/* Pexels Image Picker Modal */}
-      {showPexelsPicker && (
-        <PexelsImagePicker
-          onImageSelect={handlePexelsImageSelect}
-          onClose={() => setShowPexelsPicker(false)}
-        />
       )}
     </div>
   )

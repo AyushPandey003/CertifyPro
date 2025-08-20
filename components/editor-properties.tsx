@@ -42,8 +42,14 @@ export function EditorProperties({ selectedElement, onUpdateElement, onDeleteEle
   }
 
   const handleImageSelect = (imageData: { src: string; alt: string }) => {
-    updateProperty("src", imageData.src)
-    updateProperty("alt", imageData.alt)
+    // Batch src & alt updates in one call to avoid losing the first update due to stale props
+    onUpdateElement(selectedElement.id, {
+      properties: {
+        ...selectedElement.properties,
+        src: imageData.src,
+        alt: imageData.alt,
+      },
+    })
   }
 
   const handleDelete = () => {
@@ -266,12 +272,73 @@ export function EditorProperties({ selectedElement, onUpdateElement, onDeleteEle
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Image Properties</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <ImageUpload
               onImageSelect={handleImageSelect}
               currentSrc={selectedElement.properties.src as string | undefined}
               currentAlt={selectedElement.properties.alt as string | undefined}
             />
+            
+            <div>
+              <Label htmlFor="imageAlt" className="text-xs">
+                Alt Text
+              </Label>
+              <Input
+                id="imageAlt"
+                value={selectedElement.properties.alt as string || ""}
+                onChange={(e) => updateProperty("alt", e.target.value)}
+                placeholder="Image description for accessibility"
+                className="h-8"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="imageOpacity" className="text-xs">
+                Opacity: {Math.round((selectedElement.properties.opacity as number || 1) * 100)}%
+              </Label>
+              <Slider
+                value={[selectedElement.properties.opacity as number || 1]}
+                onValueChange={([value]) => updateProperty("opacity", value)}
+                max={1}
+                min={0.1}
+                step={0.1}
+                className="mt-2"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="imageBorderRadius" className="text-xs">
+                Border Radius: {selectedElement.properties.borderRadius as number || 0}px
+              </Label>
+              <Slider
+                value={[selectedElement.properties.borderRadius as number || 0]}
+                onValueChange={([value]) => updateProperty("borderRadius", value)}
+                max={50}
+                min={0}
+                step={1}
+                className="mt-2"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="imageFit" className="text-xs">
+                Object Fit
+              </Label>
+              <Select
+                value={selectedElement.properties.objectFit as string || "cover"}
+                onValueChange={(value) => updateProperty("objectFit", value)}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cover">Cover</SelectItem>
+                  <SelectItem value="contain">Contain</SelectItem>
+                  <SelectItem value="fill">Fill</SelectItem>
+                  <SelectItem value="scale-down">Scale Down</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
       )}

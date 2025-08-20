@@ -10,6 +10,7 @@ import { generateHash } from "@/lib/hash-generator"
 import { generateQRCodeDataURL } from "@/lib/qr-generator"
 import { createDocumentPreview } from "@/lib/pdf-generator"
 import Image from "next/image"
+import { useEffect } from "react"
 
 // Use TemplateElement type from pdf-generator to ensure compatibility
 import type { TemplateElement } from "@/lib/pdf-generator";
@@ -45,13 +46,27 @@ export function GenerationPreview({ templateElements, recipients }: GenerationPr
   }
 
   const hash = selectedRecipientData ? generateHash(selectedRecipientData, hashConfig) : ""
-  const qrCodeDataURL = hash ? generateQRCodeDataURL(hash, {
-    width: 100,
-    height: 100,
-    backgroundColor: "#ffffff",
-    foregroundColor: "#000000",
-    errorCorrectionLevel: "M"
-  }) : ""
+  const [qrCodeDataURL, setQrCodeDataURL] = useState<string>("")
+
+  // Generate QR code data URL asynchronously when hash changes
+
+  useEffect(() => {
+    let isMounted = true
+    if (hash) {
+      generateQRCodeDataURL(hash, {
+        width: 100,
+        height: 100,
+        backgroundColor: "#ffffff",
+        foregroundColor: "#000000",
+        errorCorrectionLevel: "M"
+      }).then((url) => {
+        if (isMounted) setQrCodeDataURL(url)
+      })
+    } else {
+      setQrCodeDataURL("")
+    }
+    return () => { isMounted = false }
+  }, [hash])
 
   const certificatePreview = selectedRecipientData ? createDocumentPreview(
     templateElements,
@@ -214,6 +229,8 @@ export function GenerationPreview({ templateElements, recipients }: GenerationPr
                       src={qrCodeDataURL} 
                       alt="QR Code" 
                       className="w-full h-full object-contain"
+                      width={200}
+                      height={200}
                     />
                   ) : (
                     <div className="text-muted-foreground">

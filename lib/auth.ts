@@ -20,13 +20,20 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36)
 }
 
+// Secure hashing using bcrypt (sync for simplicity; can switch to async if needed)
+import bcrypt from 'bcryptjs'
+
 export function hashPassword(password: string): string {
-  // Simple hash for demo - use proper bcrypt in production
-  return btoa(password + "salt")
+  const salt = bcrypt.genSaltSync(10)
+  return bcrypt.hashSync(password, salt)
 }
 
 export function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash
+  try {
+    return bcrypt.compareSync(password, hash)
+  } catch {
+    return false
+  }
 }
 
 export function createUser(email: string, name: string, password: string): User {

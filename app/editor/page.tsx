@@ -1,17 +1,25 @@
-"use client"
 
-import { useState, useEffect, useRef } from "react"
+"use client"
+// Accepts TemplateData | null to match EditorToolbarProps
+export interface TemplateData {
+	elements: EditorElement[];
+	canvasWidth: number;
+	canvasHeight: number;
+}
+
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Award, ArrowLeft, Save, Eye, Download, Settings, ChevronDown } from "lucide-react"
 import Link from "next/link"
+import * as htmlToImage from "html-to-image"
+import jsPDF from "jspdf"
+
 import { EditorToolbar } from "@/components/editor-toolbar"
 import { EditorCanvas } from "@/components/editor-canvas"
 import { EditorProperties } from "@/components/editor-properties"
 import { EditorLayers } from "@/components/editor-layers"
 import { EditorSettings } from "@/components/editor-settings"
-import * as htmlToImage from "html-to-image"
-import jsPDF from "jspdf"
 
 export interface EditorElement {
 	id: string
@@ -22,66 +30,120 @@ export interface EditorElement {
 	height: number
 	rotation: number
 	properties: Record<string, unknown>
+	hidden?: boolean
 }
 
 export interface EditorState {
-	elements: EditorElement[]
-	selectedElementId: string | null
-	canvasWidth: number
-	canvasHeight: number
-	zoom: number
+	elements: EditorElement[];
+	selectedElementId: string | null;
+	canvasWidth: number;
+	canvasHeight: number;
+	zoom: number;
+	backgroundImage?: string; // dataUrl or image src
 }
 
 export default function EditorPage() {
-	const [editorState, setEditorState] = useState<EditorState>({
-		elements: [],
-		selectedElementId: null,
-		canvasWidth: 800,
-		canvasHeight: 600,
-		zoom: 1,
-	})
+       const [editorState, setEditorState] = useState<EditorState>({
+	       elements: [],
+	       selectedElementId: null,
+	       canvasWidth: 800,
+	       canvasHeight: 600,
+	       zoom: 1,
+	       backgroundImage: undefined,
+       });
 	const [showExportMenu, setShowExportMenu] = useState(false)
 	const canvasNodeRef = useRef<HTMLDivElement | null>(null)
 
 	const [showSettings, setShowSettings] = useState(false)
 
-	// Auto-load imported template from templates page
-	useEffect(() => {
-		try {
-			const raw = typeof window !== "undefined" ? localStorage.getItem("certifypro-import-template") : null
-			if (raw) {
-				const imported: EditorState = JSON.parse(raw)
-				setEditorState(imported)
-				localStorage.removeItem("certifypro-import-template")
-			}
-		} catch {
-			// ignore
-		}
-	}, [])
+	// useEffect hooks will be re-added after all function declarations
 
-	const addElement = (type: EditorElement["type"]) => {
-		const newElement: EditorElement = {
-			id: `element-${Date.now()}`,
-			type,
-			x: 100,
-			y: 100,
-			width: type === "text" ? 200 : type === "qr-code" ? 100 : 150,
-			height: type === "text" ? 40 : type === "qr-code" ? 100 : 150,
-			rotation: 0,
-			properties: getDefaultProperties(type),
-		}
 
-		setEditorState((prev) => ({
-			...prev,
-			elements: [...prev.elements, newElement],
-			selectedElementId: newElement.id,
-		}))
+// Accepts TemplateData | null to match EditorToolbarProps
+
+	const loadTemplate = (templateData: TemplateData | null) => {
+		if (templateData && templateData.elements) {
+			setEditorState({
+				...editorState,
+				elements: templateData.elements,
+				canvasWidth: templateData.canvasWidth || 800,
+				canvasHeight: templateData.canvasHeight || 600,
+			})
+		}
 	}
+
+	const handleImageUpload = async (file: File) => {
+		try {
+			// Convert file to data URL for immediate use
+			const reader = new FileReader()
+			reader.onload = (e) => {
+				const dataUrl = e.target?.result as string
+				const newImageElement: EditorElement = {
+					id: `element-${Date.now()}`,
+					type: "image",
+					x: 100,
+					y: 100,
+					width: 200,
+					height: 150,
+					rotation: 0,
+					properties: {
+						src: dataUrl,
+						alt: file.name,
+						opacity: 1,
+						borderRadius: 0,
+						objectFit: "cover",
+					},
+				}
+				setEditorState((prev) => ({
+					...prev,
+					elements: [...prev.elements, newImageElement],
+					selectedElementId: newImageElement.id,
+				}))
+			}
+			reader.readAsDataURL(file)
+		} catch (error) {
+			console.error('Error uploading image:', error)
+		}
+	}
+
+	const selectedElement = editorState.elements.find((el) => el.id === editorState.selectedElementId);
+	const canSetAsBackground = !!selectedElement && selectedElement.type === "image";
+
+       const addElement = (type: EditorElement["type"]) => {
+	       const newElement: EditorElement = {
+		       id: `element-${Date.now()}`,
+		       type,
+		       x: 100,
+		       y: 100,
+		       width: type === "text" ? 200 : type === "qr-code" ? 100 : 150,
+		       height: type === "text" ? 40 : type === "qr-code" ? 100 : 150,
+		       rotation: 0,
+		       properties: getDefaultProperties(type),
+	       };
+	       setEditorState((prev) => ({
+		       ...prev,
+		       elements: [...prev.elements, newElement],
+		       selectedElementId: newElement.id,
+	       }));
+       };
+
+       // Set an image as background
+       const setImageAsBackground = (imageSrc: string) => {
+	       setEditorState((prev) => ({ ...prev, backgroundImage: imageSrc }));
+       };
+		
 
 	const updateElement = (id: string, updates: Partial<EditorElement>) => {
 		setEditorState((prev) => ({
 			...prev,
 			elements: prev.elements.map((el) => (el.id === id ? { ...el, ...updates } : el)),
+		}))
+	}
+
+	const toggleElementVisibility = (id: string) => {
+		setEditorState((prev) => ({
+			...prev,
+			elements: prev.elements.map((el) => (el.id === id ? { ...el, hidden: !el.hidden } : el)),
 		}))
 	}
 
@@ -97,26 +159,53 @@ export default function EditorPage() {
 		setEditorState((prev) => ({ ...prev, selectedElementId: id }))
 	}
 
-	const selectedElement = editorState.elements.find((el) => el.id === editorState.selectedElementId)
 
-	const handleSave = () => {
-		// Save latest template snapshot
-		const snapshot = {
-			...editorState,
-			savedAt: new Date().toISOString(),
-		}
-		localStorage.setItem("certifypro-template", JSON.stringify(snapshot))
+	const handleSave = async () => {
+		// Check if we're editing an existing project
+		const urlParams = new URLSearchParams(window.location.search)
+		const projectId = urlParams.get('projectId')
+		
+		if (projectId) {
+			// Save to project
+			try {
+				const response = await fetch(`/api/projects/${projectId}`, {
+					method: 'PUT',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						editorData: editorState,
+					}),
+				})
+				
+				if (response.ok) {
+					alert('Project saved successfully!')
+				} else {
+					alert('Failed to save project')
+				}
+			} catch (error) {
+				console.error('Error saving project:', error)
+				alert('Error saving project')
+			}
+		} else {
+			// Save as template (existing functionality)
+			const snapshot = {
+				...editorState,
+				savedAt: new Date().toISOString(),
+			}
+			localStorage.setItem("certifypro-template", JSON.stringify(snapshot))
 
-		// Append to templates list (multi-save)
-		try {
-			const listRaw = localStorage.getItem("certifypro-templates")
-			const list = listRaw ? JSON.parse(listRaw) : []
-			const name = prompt("Template name", `Template ${new Date().toLocaleString()}`) || `Template ${new Date().toLocaleString()}`
-			list.unshift({ id: `tpl-${Date.now()}`, name, snapshot })
-			localStorage.setItem("certifypro-templates", JSON.stringify(list))
-			alert("Template saved successfully!")
-		} catch {
-			alert("Template saved (single)")
+			// Append to templates list (multi-save)
+			try {
+				const listRaw = localStorage.getItem("certifypro-templates")
+				const list = listRaw ? JSON.parse(listRaw) : []
+				const name = prompt("Template name", `Template ${new Date().toLocaleString()}`) || `Template ${new Date().toLocaleString()}`
+				list.unshift({ id: `tpl-${Date.now()}`, name, snapshot })
+				localStorage.setItem("certifypro-templates", JSON.stringify(list))
+				alert("Template saved successfully!")
+			} catch {
+				alert("Template saved (single)")
+			}
 		}
 	}
 
@@ -267,34 +356,53 @@ export default function EditorPage() {
 			<div className="flex-1 flex">
 				{/* Left Sidebar - Tools */}
 				<div className="w-64 border-r border-border bg-card/30 flex flex-col">
-					<EditorToolbar onAddElement={addElement} />
+					<EditorToolbar 
+						onAddElement={addElement} 
+						onLoadTemplate={loadTemplate}
+						onImageUpload={handleImageUpload}
+					/>
 					<Separator />
 					<EditorLayers
 						elements={editorState.elements}
 						selectedElementId={editorState.selectedElementId}
 						onSelectElement={selectElement}
 						onDeleteElement={deleteElement}
+						onToggleVisibility={toggleElementVisibility}
 					/>
 				</div>
 
 				{/* Main Canvas Area */}
-				<div className="flex-1 flex flex-col">
-					<EditorCanvas
-						editorState={editorState}
-						onSelectElement={selectElement}
-						onUpdateElement={updateElement}
-						onCanvasNode={(node) => { canvasNodeRef.current = node }}
-					/>
-				</div>
+				   <div className="flex-1 flex flex-col">
+					   <EditorCanvas
+						   editorState={editorState}
+						   onSelectElement={selectElement}
+						   onUpdateElement={updateElement}
+						   onCanvasNode={(node) => { canvasNodeRef.current = node }}
+						   backgroundImage={editorState.backgroundImage}
+						   onChangeZoom={(zoom) => setEditorState((prev) => ({ ...prev, zoom }))}
+					   />
+				   </div>
 
 				{/* Right Sidebar - Properties */}
-				<div className="w-80 border-l border-border bg-card/30">
-					<EditorProperties 
-						selectedElement={selectedElement} 
-						onUpdateElement={updateElement}
-						onDeleteElement={deleteElement}
-					/>
-				</div>
+		       <div className="w-80 border-l border-border bg-card/30">
+			       <EditorProperties 
+				       selectedElement={selectedElement} 
+				       onUpdateElement={updateElement}
+				       onDeleteElement={deleteElement}
+			       />
+			       {/* Set as background button for image */}
+			       {canSetAsBackground && (
+				       <div className="p-4">
+					       <Button
+						       variant="secondary"
+						       className="w-full"
+						       onClick={() => setImageAsBackground(selectedElement.properties.src as string)}
+					       >
+						       Set as Background
+					       </Button>
+				       </div>
+			       )}
+		       </div>
 			</div>
 
 			{/* Settings Modal */}
@@ -324,6 +432,9 @@ function getDefaultProperties(type: EditorElement["type"]): Record<string, unkno
 			return {
 				src: "",
 				alt: "Image",
+				opacity: 1,
+				borderRadius: 0,
+				objectFit: "cover",
 			}
 		case "shape":
 			return {

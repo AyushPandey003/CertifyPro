@@ -2,17 +2,18 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Type, QrCode, ImageIcon, Square, Eye, Trash2 } from "lucide-react"
+import { Type, QrCode, ImageIcon, Square, Eye, EyeOff, Trash2 } from "lucide-react"
 import type { EditorElement } from "@/app/editor/page"
 
 interface EditorLayersProps {
-  elements: EditorElement[]
+  elements: (EditorElement & { hidden?: boolean })[]
   selectedElementId: string | null
   onSelectElement: (id: string) => void
   onDeleteElement: (id: string) => void
+  onToggleVisibility?: (id: string) => void
 }
 
-export function EditorLayers({ elements, selectedElementId, onSelectElement, onDeleteElement }: EditorLayersProps) {
+export function EditorLayers({ elements, selectedElementId, onSelectElement, onDeleteElement, onToggleVisibility }: EditorLayersProps) {
   const getElementIcon = (type: EditorElement["type"]) => {
     switch (type) {
       case "text":
@@ -74,8 +75,17 @@ export function EditorLayers({ elements, selectedElementId, onSelectElement, onD
                   <div className="text-xs text-muted-foreground capitalize">{element.type.replace("-", " ")}</div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    <Eye className="h-3 w-3" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleVisibility?.(element.id)
+                    }}
+                    title={element.hidden ? 'Show' : 'Hide'}
+                  >
+                    {element.hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                   </Button>
                   <Button
                     variant="ghost"

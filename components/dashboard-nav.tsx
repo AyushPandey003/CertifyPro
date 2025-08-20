@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Award, FileText, Settings, Menu, X } from "lucide-react"
+import { Award, FileText, Settings, Menu, X, QrCode } from "lucide-react"
 
 interface DashboardNavProps {
   activeTab: string
@@ -16,6 +16,7 @@ export function DashboardNav({ activeTab, onTabChange }: DashboardNavProps) {
     { id: "overview", label: "Overview", icon: Award },
     { id: "projects", label: "Projects", icon: FileText },
     { id: "templates", label: "Templates", icon: Award },
+    { id: "generation", label: "Generation", icon: QrCode },
     { id: "settings", label: "Settings", icon: Settings },
   ]
 

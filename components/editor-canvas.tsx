@@ -15,10 +15,12 @@ interface EditorCanvasProps {
   onUpdateElement: (id: string, updates: Partial<EditorElement>) => void
   /** Optional: receive the DOM node of the white canvas so parent can export it */
   onCanvasNode?: (node: HTMLDivElement | null) => void
+  backgroundImage?: string
+  onChangeZoom?: (zoom: number) => void
 }
 
 
-export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, onCanvasNode }: EditorCanvasProps) {
+export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, onCanvasNode, backgroundImage, onChangeZoom }: EditorCanvasProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const canvasRef = React.useRef<HTMLDivElement | null>(null)
@@ -72,6 +74,7 @@ export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, on
   }, [onCanvasNode])
 
   const renderElement = (element: EditorElement) => {
+    if ((element as unknown as { hidden?: boolean }).hidden) return null
     const isSelected = element.id === editorState.selectedElementId
     const style = {
       position: "absolute" as const,
@@ -132,7 +135,11 @@ export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, on
         return (
           <div
             key={element.id}
-            style={style}
+            style={{
+              ...style,
+              opacity: (element.properties.opacity as number) || 1,
+              borderRadius: `${(element.properties.borderRadius as number) || 0}px`,
+            }}
             onMouseDown={(e) => handleMouseDown(e, element.id)}
             className="overflow-hidden bg-gray-100 border border-gray-300"
           >
@@ -140,10 +147,13 @@ export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, on
               <Image
                 src={element.properties.src}
                 alt={String(element.properties.alt)}
-                className="w-full h-full object-cover"
+                className="w-full h-full"
+                style={{
+                  objectFit: (element.properties.objectFit as React.CSSProperties["objectFit"]) || "cover",
+                }}
                 draggable={false}
-                width={element.width || 300}
-                height={element.height || 200}
+                width={element.width }
+                height={element.height}
                 onError={(e) => {
                   // Handle broken images
                   const target = e.target as HTMLImageElement
@@ -191,14 +201,14 @@ export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, on
       <div className="p-4 border-b border-border bg-card/30">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => onChangeZoom && onChangeZoom(Math.max(0.25, +(editorState.zoom - 0.1).toFixed(2)))}>
               <ZoomOut className="h-4 w-4 mr-2" />
               {Math.round(editorState.zoom * 100)}%
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => onChangeZoom && onChangeZoom(Math.min(3, +(editorState.zoom + 0.1).toFixed(2)))}>
               <ZoomIn className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => onChangeZoom && onChangeZoom(1)}>
               <RotateCcw className="h-4 w-4 mr-2" />
               Reset
             </Button>
@@ -221,12 +231,34 @@ export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, on
                 height: editorState.canvasHeight * editorState.zoom,
                 transform: `scale(${editorState.zoom})`,
                 transformOrigin: "top left",
+                overflow: "hidden",
               }}
               onClick={handleCanvasClick}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
             >
+              {backgroundImage && (
+                <Image
+                  src={backgroundImage}
+                  alt="Background"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    zIndex: 0,
+                    pointerEvents: "none",
+                  }}
+                  draggable={false}
+                  width={editorState.canvasWidth}
+                  height={editorState.canvasHeight}
+                  priority
+                />
+              )}
+              {/* Render elements above background */}
               {editorState.elements.map(renderElement)}
             </div>
           </Card>

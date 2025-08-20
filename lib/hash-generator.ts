@@ -10,7 +10,6 @@ export interface HashConfig {
   customFields: string[]
   eventName?: string
 }
-
 export interface RecipientHashData {
   name: string
   email: string
