@@ -149,10 +149,10 @@ export default function EditorPage() {
 	       }));
        };
 
-       // Set an image as background
-       const setImageAsBackground = (imageSrc: string) => {
-	       setEditorState((prev) => ({ ...prev, backgroundImage: imageSrc }));
-       };
+			   // Set an image as background but do NOT change canvas size (fixed canvas)
+			   const setImageAsBackground = (imageSrc: string) => {
+				   setEditorState((prev) => ({ ...prev, backgroundImage: imageSrc }));
+			   };
 		
 
 	const updateElement = (id: string, updates: Partial<EditorElement>) => {
@@ -182,10 +182,32 @@ export default function EditorPage() {
 	}
 
 
+	const getBackgroundNaturalSize = (src?: string): Promise<{ w: number; h: number } | null> => {
+		return new Promise((resolve) => {
+			if (!src) return resolve(null)
+			try {
+				const img = new window.Image()
+				img.onload = () => {
+					const w = img.naturalWidth || img.width || 0
+					const h = img.naturalHeight || img.height || 0
+					resolve(w > 0 && h > 0 ? { w, h } : null)
+				}
+				img.onerror = () => resolve(null)
+				img.src = src
+			} catch {
+				resolve(null)
+			}
+		})
+	}
+
 	const handleSave = async () => {
 		// Check if we're editing an existing project
 		const urlParams = new URLSearchParams(window.location.search)
 		const projectId = urlParams.get('projectId')
+		// Determine effective save dimensions: use background's natural size if available
+		const nat = await getBackgroundNaturalSize(editorState.backgroundImage)
+		const saveWidth = nat?.w || editorState.canvasWidth
+		const saveHeight = nat?.h || editorState.canvasHeight
 		
 		if (projectId) {
 			// Save to project
@@ -196,7 +218,7 @@ export default function EditorPage() {
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify({
-						editorData: editorState,
+						editorData: { ...editorState, canvasWidth: saveWidth, canvasHeight: saveHeight },
 					}),
 				})
 				
@@ -213,6 +235,8 @@ export default function EditorPage() {
 			// Save as template (existing functionality)
 			const snapshot = {
 				...editorState,
+				canvasWidth: saveWidth,
+				canvasHeight: saveHeight,
 				savedAt: new Date().toISOString(),
 			}
 			localStorage.setItem("certifypro-template", JSON.stringify(snapshot))
@@ -427,8 +451,18 @@ export default function EditorPage() {
 		       </div>
 			</div>
 
-			{/* Settings Modal */}
-			{showSettings && <EditorSettings isOpen={showSettings} onClose={() => setShowSettings(false)} />}
+						{/* Settings Modal */}
+						{showSettings && (
+							<EditorSettings
+								isOpen={showSettings}
+								onClose={() => setShowSettings(false)}
+								canvasWidth={editorState.canvasWidth}
+								canvasHeight={editorState.canvasHeight}
+								onSave={({ canvasWidth, canvasHeight }) =>
+									setEditorState((prev) => ({ ...prev, canvasWidth, canvasHeight }))
+								}
+							/>
+						)}
 		</div>
 	)
 }

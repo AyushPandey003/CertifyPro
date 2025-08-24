@@ -12,9 +12,34 @@ import { Switch } from "@/components/ui/switch"
 interface EditorSettingsProps {
   isOpen: boolean
   onClose: () => void
+  // Current canvas dimensions
+  canvasWidth: number
+  canvasHeight: number
+  // Persist settings back to parent
+  onSave: (settings: { canvasWidth: number; canvasHeight: number }) => void
 }
 
-export function EditorSettings({ isOpen, onClose }: EditorSettingsProps) {
+import { useEffect, useState } from "react"
+
+export function EditorSettings({ isOpen, onClose, canvasWidth, canvasHeight, onSave }: EditorSettingsProps) {
+  const [localWidth, setLocalWidth] = useState<number>(canvasWidth)
+  const [localHeight, setLocalHeight] = useState<number>(canvasHeight)
+
+  // Sync local state when dialog opens with latest props
+  useEffect(() => {
+    if (isOpen) {
+      setLocalWidth(canvasWidth)
+      setLocalHeight(canvasHeight)
+    }
+  }, [isOpen, canvasWidth, canvasHeight])
+
+  const handleSave = () => {
+    const w = Math.max(100, Math.floor(Number(localWidth) || 0))
+    const h = Math.max(100, Math.floor(Number(localHeight) || 0))
+    onSave({ canvasWidth: w, canvasHeight: h })
+    onClose()
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -60,11 +85,23 @@ export function EditorSettings({ isOpen, onClose }: EditorSettingsProps) {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="canvasWidth">Canvas Width (px)</Label>
-                  <Input id="canvasWidth" type="number" defaultValue="800" />
+                  <Input
+                    id="canvasWidth"
+                    type="number"
+                    value={localWidth}
+                    onChange={(e) => setLocalWidth(Number(e.target.value))}
+                    min={100}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="canvasHeight">Canvas Height (px)</Label>
-                  <Input id="canvasHeight" type="number" defaultValue="600" />
+                  <Input
+                    id="canvasHeight"
+                    type="number"
+                    value={localHeight}
+                    onChange={(e) => setLocalHeight(Number(e.target.value))}
+                    min={100}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -167,7 +204,7 @@ export function EditorSettings({ isOpen, onClose }: EditorSettingsProps) {
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={onClose}>Save Settings</Button>
+          <Button onClick={handleSave}>Save Settings</Button>
         </div>
       </DialogContent>
     </Dialog>

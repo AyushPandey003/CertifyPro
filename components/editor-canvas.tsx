@@ -249,6 +249,7 @@ export function EditorCanvas({ editorState, onSelectElement, onUpdateElement, on
                     width: "100%",
                     height: "100%",
                     objectFit: "cover",
+                    objectPosition: "center",
                     zIndex: 0,
                     pointerEvents: "none",
                   }}

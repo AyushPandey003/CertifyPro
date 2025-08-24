@@ -289,8 +289,15 @@ The Team`)
     const nx = e.clientX - rect.left
     const ny = e.clientY - rect.top
     const id = dragState.current.id
-    updateFieldElement(id, { x: Math.round(nx), y: Math.round(ny) })
-  }, [updateFieldElement])
+    const baseW = template.width || 800
+    const baseH = template.height || 600
+    const maxW = 900
+    const maxH = 700
+    const scale = Math.min(maxW / baseW, maxH / baseH, 1)
+    const logicalX = Math.round(nx / scale)
+    const logicalY = Math.round(ny / scale)
+    updateFieldElement(id, { x: logicalX, y: logicalY })
+  }, [updateFieldElement, template.width, template.height])
 
   const handleCanvasMouseUp = () => {
     dragState.current = null
@@ -320,7 +327,24 @@ The Team`)
     const reader = new FileReader()
     reader.onload = ev => {
       const dataUrl = ev.target?.result as string
-      setTemplate(prev => ({ ...prev, backgroundImage: dataUrl }))
+      // Read natural size and expand template if the image is larger
+  const img = new window.Image()
+      img.onload = () => {
+        setTemplate(prev => {
+          const natW = img.naturalWidth || img.width
+          const natH = img.naturalHeight || img.height
+          const next = { ...prev, backgroundImage: dataUrl }
+          if (natW > 0 && natH > 0) {
+            if (!prev.width || !prev.height || natW > (prev.width || 0) || natH > (prev.height || 0)) {
+              next.width = natW
+              next.height = natH
+            }
+          }
+          return next
+        })
+      }
+      img.onerror = () => setTemplate(prev => ({ ...prev, backgroundImage: dataUrl }))
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   }
@@ -566,7 +590,36 @@ The Team`)
                                   <Image src={previewSrc} alt="bg" width={180} height={60} className="rounded border object-contain max-h-16" unoptimized />
                                 )}
                                 <div className="flex gap-2">
-                                  <Button type="button" size="sm" onClick={() => { setTemplate(convertToCertificateTemplate()); setShowTemplates(false); }}>Use Template</Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => {
+                                      const nextTpl = convertToCertificateTemplate();
+                                      setTemplate(nextTpl);
+                                      setShowTemplates(false);
+                                      // If background image exists, expand template to natural size if larger
+                                      const bg = nextTpl.backgroundImage;
+                                      if (bg) {
+                                        try {
+                                          const img = new window.Image();
+                                          img.onload = () => {
+                                            setTemplate(prev => {
+                                              const natW = img.naturalWidth || img.width;
+                                              const natH = img.naturalHeight || img.height;
+                                              if (!natW || !natH) return prev;
+                                              if (!prev.width || !prev.height || natW > (prev.width || 0) || natH > (prev.height || 0)) {
+                                                return { ...prev, width: natW, height: natH };
+                                              }
+                                              return prev;
+                                            });
+                                          }
+                                          img.src = bg;
+                                        } catch { /* ignore */ }
+                                      }
+                                    }}
+                                  >
+                                    Use Template
+                                  </Button>
                                   <Button type="button" size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(JSON.stringify(tpl.snapshot)); alert('Snapshot copied to clipboard') }}>Export Snapshot</Button>
                                 </div>
                               </div>
@@ -669,28 +722,56 @@ The Team`)
                       </div>
                     )}
                   </div>
-                  <div
-                    className="relative border rounded shadow-inner bg-white overflow-hidden select-none"
-                    style={{ width: template.width || 800, height: template.height || 600 }}
-                    onMouseMove={handleCanvasMouseMove}
-                    onMouseUp={handleCanvasMouseUp}
-                    onMouseLeave={handleCanvasMouseUp}
-                  >
-                    {template.backgroundImage && (
-                      <Image src={template.backgroundImage} alt="bg" fill style={{objectFit:'cover'}} className="pointer-events-none" unoptimized />
-                    )}
-                    {fieldElements.map(fe => (
+                  {(() => {
+                    const baseW = template.width || 800
+                    const baseH = template.height || 600
+                    const maxW = 900
+                    const maxH = 700
+                    const scale = Math.min(maxW / baseW, maxH / baseH, 1)
+                    const viewW = Math.round(baseW * scale)
+                    const viewH = Math.round(baseH * scale)
+                    return (
                       <div
-                        key={fe.id}
-                        onMouseDown={(e)=>handleFieldMouseDown(e, fe.id)}
-                        onClick={(e)=>{e.stopPropagation(); setSelectedFieldId(fe.id)}}
-                        className={`absolute cursor-move px-1 rounded ${selectedFieldId===fe.id ? 'ring-2 ring-blue-500 bg-white/70' : 'bg-white/60'} `}
-                        style={{ left: fe.x, top: fe.y, transform: 'translate(-50%, -50%)', fontSize: fe.fontSize, color: fe.color, textAlign: fe.alignment, fontFamily: 'Arial', minWidth: 40 as number }}
+                        className="border rounded shadow-inner bg-white overflow-hidden select-none"
+                        style={{ width: viewW, height: viewH, position: 'relative' }}
+                        onMouseMove={handleCanvasMouseMove}
+                        onMouseUp={handleCanvasMouseUp}
+                        onMouseLeave={handleCanvasMouseUp}
                       >
-                        {`{{${fe.field}}}`}
+                        <div
+                          className="relative"
+                          style={{
+                            width: baseW,
+                            height: baseH,
+                            transform: `scale(${scale})`,
+                            transformOrigin: 'top left',
+                          }}
+                        >
+                          {template.backgroundImage && (
+                            <Image
+                              src={template.backgroundImage}
+                              alt="bg"
+                              fill
+                              style={{ objectFit: 'cover' }}
+                              className="pointer-events-none"
+                              unoptimized
+                            />
+                          )}
+                          {fieldElements.map(fe => (
+                            <div
+                              key={fe.id}
+                              onMouseDown={(e)=>handleFieldMouseDown(e, fe.id)}
+                              onClick={(e)=>{e.stopPropagation(); setSelectedFieldId(fe.id)}}
+                              className={`absolute cursor-move px-1 rounded ${selectedFieldId===fe.id ? 'ring-2 ring-blue-500 bg-white/70' : 'bg-white/60'} `}
+                              style={{ left: fe.x, top: fe.y, transform: 'translate(-50%, -50%)', fontSize: fe.fontSize, color: fe.color, textAlign: fe.alignment, fontFamily: 'Arial', minWidth: 40 as number }}
+                            >
+                              {`{{${fe.field}}}`}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })()}
                 </div>
               )}
               <div>

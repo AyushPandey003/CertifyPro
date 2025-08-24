@@ -143,9 +143,14 @@ async function generateCertificateImage(
     return `data:image/png;base64,${btoa('server-placeholder')}`
   }
   const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
+  // Render at higher pixel density to preserve quality similar to editor exports
+  const scale = Math.max(1, (typeof window !== 'undefined' && (window.devicePixelRatio || 1)) || 1)
+  const pixelScale = Math.max(2, Math.floor(scale)) // minimum 2x for crisp output
+  canvas.width = width * pixelScale
+  canvas.height = height * pixelScale
   const ctx = canvas.getContext('2d')!
+  // Scale drawing context; keep using template coordinates
+  ctx.scale(pixelScale, pixelScale)
 
   // Helper to load image
   const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
@@ -160,7 +165,19 @@ async function generateCertificateImage(
   if (template.backgroundImage) {
     try {
       const bg = await loadImage(template.backgroundImage)
-      ctx.drawImage(bg, 0, 0, width, height)
+      // Draw to cover full canvas area; if aspect ratio differs, this mimics CSS object-fit: cover
+  const imgW = bg.naturalWidth || Number((bg as unknown as { width?: number }).width) || 0
+  const imgH = bg.naturalHeight || Number((bg as unknown as { height?: number }).height) || 0
+      if (imgW && imgH) {
+        const coverScale = Math.max(width / imgW, height / imgH)
+        const dW = imgW * coverScale
+        const dH = imgH * coverScale
+        const dx = (width - dW) / 2
+        const dy = (height - dH) / 2
+        ctx.drawImage(bg, dx, dy, dW, dH)
+      } else {
+        ctx.drawImage(bg, 0, 0, width, height)
+      }
     } catch {
       // fallback fill
       ctx.fillStyle = '#ffffff'
