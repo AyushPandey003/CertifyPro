@@ -87,7 +87,7 @@ async function processGenerationJob(jobId: string) {
         customFields: recipient.customFields,
       }
 
-      const hash = generateHash(recipientHashData, job.hashConfig)
+  const hash = await generateHash(recipientHashData, job.hashConfig)
       const qrCodeData = generateQRCodeData(hash, process.env.NEXT_PUBLIC_BASE_URL)
       generateQRCodeDataURL(qrCodeData, job.qrCodeOptions)
 
@@ -152,7 +152,7 @@ export async function generatePreview(
     customFields: sampleRecipient.customFields,
   }
 
-  const hash = generateHash(recipientHashData, hashConfig)
+  const hash = await generateHash(recipientHashData, hashConfig)
 
 
   const preview = createDocumentPreview(templateElements, sampleRecipient as unknown as Recipient, hash)

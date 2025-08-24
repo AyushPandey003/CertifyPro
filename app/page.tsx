@@ -1,37 +1,28 @@
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Award, Users, Zap, Shield, ArrowRight, Star } from "lucide-react"
-import Link from "next/link"
+import { auth0 } from "@/lib/auth0";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Award, Users, Zap, Shield, ArrowRight, Star } from "lucide-react";
+import Link from "next/link";
+import Navbar from '@/components/navbar'
 
-export default function LandingPage() {
+export default async function Home() {
+  const session = await auth0.getSession();
+
+  if (session) {
+    return (
+      <main className="min-h-screen bg-background flex flex-col items-center justify-center">
+        <h1 className="text-4xl font-black mb-4">Welcome, {session.user.name}!</h1>
+        <p className="mb-8">You are logged in.</p>
+        <a href="/dashboard" className="btn btn-primary">Go to Dashboard</a>
+      </main>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Award className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-black text-foreground">CertifyPro</h1>
-          </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="#features" className="text-muted-foreground hover:text-foreground transition-colors">
-              Features
-            </Link>
-            <Link href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">
-              Pricing
-            </Link>
-            <Link href="#about" className="text-muted-foreground hover:text-foreground transition-colors">
-              About
-            </Link>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Button asChild>
-              <Link href="/demo">View Demo</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      <Navbar />
 
       {/* Hero Section */}
       <section className="py-20 px-4">
@@ -77,8 +68,8 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             <Card className="border-border hover:shadow-lg transition-shadow">
               <CardHeader>
-                <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                  <Award className="h-6 w-6 text-primary" />
+                <div className="h-12 w-12 bg-secondary/10 rounded-lg flex items-center justify-center mb-4">
+                  <Award className="h-6 w-6 text-secondary" />
                 </div>
                 <CardTitle className="text-xl">Drag & Drop Editor</CardTitle>
                 <CardDescription>
@@ -173,5 +164,6 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
-  )
+  );
 }
+// ...existing code inside Home function only...

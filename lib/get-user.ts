@@ -1,6 +1,11 @@
-import { auth0 } from "@/lib/auth0"
+import { safeGetSession } from "@/lib/auth-utils"
 
 export async function getUser() {
-  const session = await auth0.getSession()
-  return session?.user ?? null
+  try {
+    const session = await safeGetSession()
+    return session?.user ?? null
+  } catch (error) {
+    console.error('Error getting user:', error)
+    return null
+  }
 }

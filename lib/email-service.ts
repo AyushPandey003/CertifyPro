@@ -179,25 +179,64 @@ export async function sendBulkCertificateEmails(
   body: string,
   onProgress?: (p: CertificateBatchProgress) => void
 ): Promise<{ batchId: string }> {
-  const batch: EmailBatch = {
-    id: batchId,
-    name: `Certificate Email Batch ${batchId}`,
-    recipients: recipients.map(r => r.email),
-    subject,
-    body,
-    status: 'pending',
-    progress: 0,
-    sent: 0,
-    failed: 0,
-    createdAt: new Date()
+  // Use the server API route intended for bulk certificate emails. Return error if it fails.
+  // Prepare payload for /api/emails/send-certificates
+  const toBase64 = (data: Buffer | string): string => {
+    if (typeof data === 'string') return data
+    // Browser-safe Uint8Array -> base64
+    try {
+      const arr = data as unknown as Uint8Array
+      let binary = ''
+      for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i])
+      if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+        return window.btoa(binary)
+      }
+    } catch { /* ignore */ }
+    return ''
   }
 
-  emailBatches.set(batchId, batch)
+  const payloadRecipients = recipients.map(r => ({
+    email: r.email,
+    name: r.name,
+    certificateBuffer: toBase64(r.certificateBuffer),
+    customFields: r.customFields
+  }))
 
-  // Start processing in background
-  processCertificateEmailBatch(batchId, recipients, subject, body, onProgress)
+  // Validate that all recipients have valid certificate data
+  const invalidRecipients = payloadRecipients.filter(r => !r.certificateBuffer)
+  if (invalidRecipients.length > 0) {
+    throw new Error(`Invalid certificate data for recipients: ${invalidRecipients.map(r => r.name).join(', ')}`)
+  }
 
-  return { batchId }
+  const resp = await fetch('/api/email/send/send-certificates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      recipients: payloadRecipients,
+      subject,
+      body
+    })
+  })
+  const json = await resp.json().catch(() => ({}))
+  if (!resp.ok || !json?.success) {
+    console.error('Email API Error Details:', {
+      status: resp.status,
+      statusText: resp.statusText,
+      json,
+      error: json?.error,
+      details: json?.details
+    })
+    throw new Error(json?.error || json?.details || `Bulk send API failed (${resp.status}: ${resp.statusText})`)
+  }
+  onProgress?.({
+    batchId: json.data?.batchId || batchId,
+    sent: recipients.length,
+    failed: 0,
+    total: recipients.length,
+    progress: 100,
+    status: 'completed'
+  })
+  return { batchId: json.data?.batchId || batchId }
 }
 
 async function processEmailBatch(
@@ -259,70 +298,7 @@ async function processEmailBatch(
   emailBatches.set(batchId, batch)
 }
 
-async function processCertificateEmailBatch(
-  batchId: string,
-  recipients: Array<{ 
-    email: string; 
-    name: string; 
-    certificateBuffer: Buffer | string;
-    customFields?: Record<string, string> 
-  }>,
-  subject: string,
-  body: string,
-  onProgress?: (p: CertificateBatchProgress) => void
-) {
-  const batch = emailBatches.get(batchId)
-  if (!batch) return
-
-  batch.status = 'processing'
-  emailBatches.set(batchId, batch)
-
-  for (let i = 0; i < recipients.length; i++) {
-    const recipient = recipients[i]
-    
-    // Personalize email content
-    let personalizedSubject = subject
-    let personalizedBody = body
-    
-    // Replace placeholders
-    personalizedSubject = personalizedSubject.replace(/\{\{name\}\}/g, recipient.name)
-    personalizedBody = personalizedBody.replace(/\{\{name\}\}/g, recipient.name)
-    
-    if (recipient.customFields) {
-      Object.entries(recipient.customFields).forEach(([key, value]) => {
-        const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g')
-        personalizedSubject = personalizedSubject.replace(placeholder, value)
-        personalizedBody = personalizedBody.replace(placeholder, value)
-      })
-    }
-
-    const buffer: Buffer = typeof recipient.certificateBuffer === 'string'
-      ? Buffer.from(recipient.certificateBuffer, 'base64')
-      : recipient.certificateBuffer
-
-  const result = await sendCertificateEmail(recipient, buffer, personalizedSubject, personalizedBody)
-
-    if (result.success) {
-      batch.sent++
-    } else {
-      batch.failed++
-    }
-
-    batch.progress = Math.round(((i + 1) / recipients.length) * 100)
-  emailBatches.set(batchId, batch)
-  onProgress?.({ batchId, sent: batch.sent, failed: batch.failed, total: recipients.length, progress: batch.progress, status: batch.status })
-
-    // Rate limiting - send max 10 emails per minute
-    if (i < recipients.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 6000)) // 6 seconds between emails
-    }
-  }
-
-  batch.status = 'completed'
-  batch.completedAt = new Date()
-  emailBatches.set(batchId, batch)
-  onProgress?.({ batchId, sent: batch.sent, failed: batch.failed, total: recipients.length, progress: batch.progress, status: batch.status })
-}
+// Client-side background fallback removed to ensure server route handles delivery.
 
 export async function getEmailBatch(batchId: string): Promise<EmailBatch | null> {
   return emailBatches.get(batchId) || null

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,7 +34,7 @@ export function GenerationPreview({ templateElements, recipients }: GenerationPr
 
   // Generate hash for selected recipient
   const selectedRecipientData = recipients[selectedRecipient]
-  const hashConfig = {
+  const hashConfig = useMemo(() => ({
     includeName: true,
     includeEmail: true,
     includeRollNumber: true,
@@ -43,10 +43,18 @@ export function GenerationPreview({ templateElements, recipients }: GenerationPr
     includeDate: true,
     customFields: [],
     eventName: "LinPack Club Event 2024",
-  }
+  }), [])
 
-  const hash = selectedRecipientData ? generateHash(selectedRecipientData, hashConfig) : ""
+  const [hash, setHash] = useState<string>("")
   const [qrCodeDataURL, setQrCodeDataURL] = useState<string>("")
+
+  useEffect(() => {
+    let active = true
+    if (selectedRecipientData) {
+      generateHash(selectedRecipientData, hashConfig).then(h => { if (active) setHash(h) })
+    } else setHash("")
+    return () => { active = false }
+  }, [selectedRecipientData, hashConfig])
 
   // Generate QR code data URL asynchronously when hash changes
 

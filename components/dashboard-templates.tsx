@@ -21,51 +21,7 @@ export function DashboardTemplates() {
       isPopular: true,
       preview: "/winner.png?height=200&width=300",
     },
-    {
-      id: 2,
-      name: "Conference Badge",
-      type: "Event Pass",
-      category: "Events",
-      description: "Professional conference badge with QR code placement",
-      isPopular: true,
-      preview: "/placeholder.svg?height=200&width=300",
-    },
-    {
-      id: 3,
-      name: "Achievement Award",
-      type: "Certificate",
-      category: "Academic",
-      description: "Traditional academic achievement certificate with elegant borders",
-      isPopular: false,
-      preview: "/placeholder.svg?height=200&width=300",
-    },
-    {
-      id: 4,
-      name: "Workshop Pass",
-      type: "Event Pass",
-      category: "Education",
-      description: "Colorful workshop pass design with participant information",
-      isPopular: false,
-      preview: "/placeholder.svg?height=200&width=300",
-    },
-    {
-      id: 5,
-      name: "Excellence Certificate",
-      type: "Certificate",
-      category: "Professional",
-      description: "Premium certificate design for excellence awards",
-      isPopular: true,
-      preview: "/placeholder.svg?height=200&width=300",
-    },
-    {
-      id: 6,
-      name: "Event Ticket",
-      type: "Event Pass",
-      category: "Events",
-      description: "Modern event ticket design with security features",
-      isPopular: false,
-      preview: "/placeholder.svg?height=200&width=300",
-    },
+   
   ]
 
   const handleUseTemplate = (template: (typeof templates)[number]) => {

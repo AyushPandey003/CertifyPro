@@ -1,3 +1,6 @@
+
+// Secure hashing using bcrypt (sync for simplicity; can switch to async if needed)
+import bcrypt from 'bcryptjs'
 export interface User {
   id: string
   email: string
@@ -20,8 +23,7 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36)
 }
 
-// Secure hashing using bcrypt (sync for simplicity; can switch to async if needed)
-import bcrypt from 'bcryptjs'
+
 
 export function hashPassword(password: string): string {
   const salt = bcrypt.genSaltSync(10)

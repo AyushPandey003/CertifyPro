@@ -1,30 +1,28 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
-import { db } from "@/app/db";
-import { Users } from "@/app/db/schema";
+
+import { NextResponse } from "next/server";
 
 export const auth0 = new Auth0Client({
-  beforeSessionSaved: async (session) => {
-    interface Auth0User {
-      sub?: string;
-      email?: string;
-      name?: string;
-      nickname?: string;
-      picture?: string;
-      [key: string]: unknown;
-    }
-    const user = session.user as Auth0User | undefined;
-    const id = user?.sub as string | undefined;
-    if (!id) return session;
+	async onCallback(error: unknown, context: Record<string, unknown>, session: Record<string, unknown> | null) {
+		if (error) {
+			console.error("Authentication error:", error);
+			return NextResponse.redirect(
+				new URL("/error", process.env.APP_BASE_URL || "http://localhost:3000")
+			);
+		}
 
-    const email = (user?.email as string | undefined) ?? "";
-    const name = (user?.name as string | undefined) ?? (user?.nickname as string | undefined) ?? null;
-    const picture = (typeof user?.picture === "string" ? (user?.picture as string) : undefined) ?? null;
+		// Custom logic after successful authentication
+			if (session) {
+				try {
+					console.log("User logged in successfully:", JSON.stringify(session));
+				} catch {
+					// ignore JSON errors
+				}
+			}
 
-    await db
-      .insert(Users)
-      .values({ id, email, name, picture, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: Users.id, set: { email, name, picture, updatedAt: new Date() } });
-
-    return session;
-  },
+			const returnTo = (context as { returnTo?: string })?.returnTo || "/";
+			return NextResponse.redirect(
+				new URL(String(returnTo), process.env.APP_BASE_URL || "http://localhost:3000")
+			);
+	}
 });

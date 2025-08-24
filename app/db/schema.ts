@@ -84,3 +84,17 @@ export const EmailLogs = pgTable("email_logs", {
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   error: text("error"),
 });
+
+// OAuth token storage (encrypted refresh tokens)
+export const OAuthTokens = pgTable("oauth_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull().references(() => Users.id),
+  provider: text("provider").notNull(), // e.g. 'gmail'
+  // encrypted refresh token (nullable for cases where only short-lived access token is available)
+  refreshTokenEnc: text("refresh_token_enc"),
+  accessToken: text("access_token"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at"),
+  scopes: text("scopes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

@@ -38,7 +38,7 @@ export default async function LoginPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button asChild className="w-full" size="lg">
-              <a href="/auth/login?returnTo=/dashboard">Continue with Auth0</a>
+              <Link href="/auth/login?returnTo=/dashboard">Continue with Auth0</Link>
             </Button>
 
             <Separator />
@@ -46,7 +46,7 @@ export default async function LoginPage() {
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
                 Don&#39;t have an account?{" "}
-                <a href="/auth/login?returnTo=/dashboard" className="text-primary hover:underline font-medium">Sign up with Auth0</a>
+                <Link href="/auth/login?returnTo=/dashboard" className="text-primary hover:underline font-medium">Sign up with Auth0</Link>
               </p>
             </div>
           </CardContent>

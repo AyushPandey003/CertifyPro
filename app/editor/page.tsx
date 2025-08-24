@@ -7,7 +7,7 @@ export interface TemplateData {
 	canvasHeight: number;
 }
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Award, ArrowLeft, Save, Eye, Download, Settings, ChevronDown } from "lucide-react"
@@ -51,6 +51,28 @@ export default function EditorPage() {
 	       zoom: 1,
 	       backgroundImage: undefined,
        });
+
+       // Load template from localStorage if present (from dashboard-templates)
+       useEffect(() => {
+	       if (typeof window === "undefined") return;
+	       const imported = localStorage.getItem("certifypro-import-template");
+	       if (imported) {
+		       try {
+			       const template = JSON.parse(imported);
+			       // If the template has an image as the first element, set as background
+			       let backgroundImage = undefined;
+			       if (template.elements && template.elements.length > 0 && template.elements[0].type === "image") {
+				       backgroundImage = template.elements[0].properties.src;
+			       }
+			       setEditorState((prev) => ({
+				       ...prev,
+				       ...template,
+				       backgroundImage: backgroundImage || prev.backgroundImage,
+			       }));
+		       } catch {}
+		       localStorage.removeItem("certifypro-import-template");
+	       }
+       }, []);
 	const [showExportMenu, setShowExportMenu] = useState(false)
 	const canvasNodeRef = useRef<HTMLDivElement | null>(null)
 

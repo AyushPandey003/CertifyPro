@@ -179,6 +179,12 @@ async function generateCertificateImage(
     ...recipient.customFields
   }
 
+  // Debug: log available placeholders and map
+  try {
+    console.debug('[certificate-generator] text elements placeholders:', template.elements.filter(e => e.type === 'text').map(e => (e.properties && (e.properties.placeholder || e.properties.text)) || ''))
+    console.debug('[certificate-generator] placeholderMap for recipient:', recipient.id, placeholderMap)
+  } catch {}
+
   const replacePlaceholders = (text?: string) => {
     if (!text) return ''
     return text.replace(/\{\{(.*?)\}\}/g, (_, key) => placeholderMap[key.trim()] || '')

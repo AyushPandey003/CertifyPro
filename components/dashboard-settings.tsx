@@ -5,9 +5,51 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { User, Bell, Shield, Palette, Download } from "lucide-react"
+import { User, Bell, Shield, Palette, Download, Mail } from "lucide-react"
+import { useEffect, useState } from "react"
 
 export function DashboardSettings() {
+  const [gmailClientId, setGmailClientId] = useState("")
+  const [gmailRedirectUri, setGmailRedirectUri] = useState("")
+  const [hasGmailConfig, setHasGmailConfig] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    // Load status
+    fetch('/api/email/gmail/client').then(r => r.json()).then(d => {
+      if (d?.success && d?.config) {
+        setHasGmailConfig(true)
+        setGmailClientId(d.config.clientId)
+        setGmailRedirectUri(d.config.redirectUri)
+      } else if (d?.success) {
+        setHasGmailConfig(false)
+      }
+    }).catch(() => setHasGmailConfig(false))
+  }, [])
+
+  const saveGmailClient = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const form = e.target as HTMLFormElement
+    const secret = (form.elements.namedItem('gmailClientSecret') as HTMLInputElement)?.value
+    if (!gmailClientId || !secret || !gmailRedirectUri) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/email/gmail/client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: gmailClientId, clientSecret: secret, redirectUri: gmailRedirectUri })
+      })
+      const d = await res.json()
+      if (d?.success) setHasGmailConfig(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const connectGmail = () => {
+    window.location.href = '/api/email/gmail/auth'
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -139,6 +181,42 @@ export function DashboardSettings() {
             </div>
             <Switch id="autoSave" defaultChecked />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Gmail OAuth (BYO) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            Gmail Integration
+          </CardTitle>
+          <CardDescription>Bring your own Google OAuth client to send emails from your Gmail account</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={saveGmailClient} className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="gmailClientId">Client ID</Label>
+                <Input id="gmailClientId" value={gmailClientId} onChange={e => setGmailClientId(e.target.value)} placeholder="xxxxxxxx.apps.googleusercontent.com" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gmailClientSecret">Client Secret</Label>
+                <Input id="gmailClientSecret" name="gmailClientSecret" type="password" placeholder="••••••••" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gmailRedirectUri">Redirect URI</Label>
+              <Input id="gmailRedirectUri" value={gmailRedirectUri} onChange={e => setGmailRedirectUri(e.target.value)} placeholder="https://yourapp.com/api/email/gmail/callback" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save Client'}</Button>
+              <Button type="button" variant="outline" onClick={connectGmail} disabled={!hasGmailConfig}>Connect Gmail</Button>
+            </div>
+            {hasGmailConfig === false && (
+              <p className="text-sm text-muted-foreground">Enter your Google OAuth client first, then click Connect.</p>
+            )}
+          </form>
         </CardContent>
       </Card>
 

@@ -43,8 +43,6 @@ export function NewProjectDialog({ onProjectCreated }: NewProjectDialogProps) {
         setName("")
         setType("certificate")
         onProjectCreated?.()
-        
-        // Navigate to editor with the new project
         router.push(`/editor?projectId=${project.id}`)
       } else {
         console.error("Failed to create project")

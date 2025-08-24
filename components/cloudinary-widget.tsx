@@ -56,9 +56,9 @@ export function CloudinaryWidgetButton({ onImageSelect, label = "Open Cloudinary
     const scriptId = "cloudinary-upload-widget"
     if (document.getElementById(scriptId)) {
       // Another instance is loading
-      const existing = document.getElementById(scriptId) as HTMLScriptElement
-      if (existing && (existing as any).dataset.loaded === "true") setReady(true)
-      else existing.addEventListener("load", () => setReady(true))
+  const existing = document.getElementById(scriptId) as HTMLScriptElement
+  if (existing && existing.dataset && existing.dataset.loaded === "true") setReady(true)
+  else existing.addEventListener("load", () => setReady(true))
       return
     }
 
@@ -67,7 +67,7 @@ export function CloudinaryWidgetButton({ onImageSelect, label = "Open Cloudinary
     script.src = "https://upload-widget.cloudinary.com/global/all.js"
     script.async = true
     script.addEventListener("load", () => {
-      ;(script as any).dataset.loaded = "true"
+      script.dataset.loaded = "true"
       setReady(true)
     })
     document.body.appendChild(script)

@@ -38,7 +38,9 @@ export default async function RegisterPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button asChild className="w-full" size="lg">
-              <a href="/auth/login?returnTo=/dashboard">Continue with Auth0</a>
+              <Link href="/auth/login?returnTo=/dashboard" legacyBehavior passHref>
+                <span>Continue with Auth0</span>
+              </Link>
             </Button>
 
             <Separator />
@@ -46,7 +48,7 @@ export default async function RegisterPage() {
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
                 Already have an account?{" "}
-                <a href="/auth/login?returnTo=/dashboard" className="text-primary hover:underline font-medium">Sign in with Auth0</a>
+                <Link href="/auth/login?returnTo=/dashboard" className="text-primary hover:underline font-medium">Sign in with Auth0</Link>
               </p>
             </div>
           </CardContent>

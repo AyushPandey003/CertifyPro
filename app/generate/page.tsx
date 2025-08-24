@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,7 @@ import { generateCertificates, getDefaultCertificateTemplate, type CertificateTe
 import { sendBulkCertificateEmails, type EmailBatch, type CertificateBatchProgress } from '@/lib/email-service'
 import {  type QRCodeOptions } from '@/lib/qr-generator'
 import type { GeneratedCertificate } from '@/lib/certificate-generator'
+import Navbar from '@/components/navbar'
 
 // Helper function to generate UUIDs in browser environment
 function generateUUID(): string {
@@ -40,6 +41,40 @@ function generateUUID(): string {
 export default function GeneratePage() {
   const [activeTab, setActiveTab] = useState('template')
   const [template, setTemplate] = useState<CertificateTemplate>(getDefaultCertificateTemplate())
+  type SnapshotElement = {
+    id?: string
+    type?: string
+    x?: number
+    y?: number
+    width?: number
+    height?: number
+    properties?: Record<string, unknown>
+  }
+
+  type SavedTemplateItem = {
+    id: string
+    name: string
+    snapshot: {
+      elements?: SnapshotElement[]
+      canvasWidth?: number
+      canvasHeight?: number
+      backgroundImage?: string
+      savedAt?: string
+    }
+  }
+  const [savedTemplates, setSavedTemplates] = useState<SavedTemplateItem[]>([])
+  const [showTemplates, setShowTemplates] = useState(false)
+  // Load saved templates from localStorage on mount
+  useEffect(() => {
+    try {
+      // the editor saves templates under the key 'certifypro-templates'
+      const raw = localStorage.getItem('certifypro-templates')
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr)) setSavedTemplates(arr)
+      }
+    } catch {}
+  }, [])
   const bgFileInputRef = useRef<HTMLInputElement | null>(null)
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [emailSubject, setEmailSubject] = useState('Certificate of Participation - {{name}}')
@@ -59,6 +94,12 @@ The Team`)
   const [emailBatch, setEmailBatch] = useState<EmailBatch | null>(null)
   const [gmailConnected, setGmailConnected] = useState(false)
   const [checkingGmail, setCheckingGmail] = useState(true)
+  // CSV headers & dynamic field placement state
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([])
+  type FieldElement = { id: string; field: string; x: number; y: number; fontSize: number; color: string; alignment: 'left' | 'center' | 'right' }
+  const [fieldElements, setFieldElements] = useState<FieldElement[]>([])
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null)
+  const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -128,8 +169,24 @@ The Team`)
         const text = e.target?.result as string
         const lines = text.split('\n')
         const headers = lines[0].split(',').map(h => h.trim())
+        setCsvHeaders(headers)
+        // Auto-add common fields if present
+        setFieldElements([])
+        const autoFields = ['name', 'registrationNumber', 'teamId']
+        autoFields.forEach((field) => {
+          if (headers.includes(field)) {
+            setFieldElements(prev => prev.some(f => f.field === field) ? prev : [...prev, {
+              id: `fld-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              field,
+              x: (template.width || 800)/2,
+              y: (template.height || 600)/2 + (prev.length * 50),
+              fontSize: 32,
+              color: '#000000',
+              alignment: 'center',
+            }])
+          }
+        })
         const data = lines.slice(1).filter(line => line.trim())
-        
         const newRecipients: Recipient[] = data.map((line, index) => {
           const values = line.split(',').map(v => v.trim())
           return {
@@ -146,7 +203,6 @@ The Team`)
             }, {} as Record<string, string>)
           }
         })
-        
         setRecipients(newRecipients)
       }
       reader.readAsText(file)
@@ -159,11 +215,40 @@ The Team`)
       return
     }
 
+    // Build combined template including dynamic field elements
+  const dynamicTextElements = fieldElements.map(fe => ({
+      id: fe.id,
+      type: 'text' as const,
+      x: fe.x,
+      y: fe.y,
+      properties: {
+        placeholder: `{{${fe.field}}}`,
+        fontFamily: 'Arial',
+        fontSize: fe.fontSize,
+        color: fe.color,
+        alignment: fe.alignment,
+      },
+    }))
+    const combinedTemplate: CertificateTemplate = {
+      ...template,
+      elements: [
+        // keep existing elements but remove prior dynamic placeholder ones (match by placeholder token)
+        ...template.elements.filter(e => {
+          const props = (e as unknown as { properties?: Record<string, unknown> }).properties
+          const ph = props && typeof props['placeholder'] === 'string' ? String(props['placeholder']) : null
+          if (!ph) return true
+          const token = ph.replace(/\{\{|\}\}/g,'').trim()
+          return !csvHeaders.includes(token)
+        }),
+        ...dynamicTextElements,
+      ],
+    }
+
     setGenerationStatus('generating')
     setProgress(0)
 
     try {
-      const certificates = await generateCertificates(template, recipients, qrOptions, (p) => setProgress(p))
+      const certificates = await generateCertificates(combinedTemplate, recipients, qrOptions, (p) => setProgress(p))
       setGeneratedCertificates(certificates)
       setGenerationStatus('completed')
     } catch (error) {
@@ -171,6 +256,47 @@ The Team`)
       setGenerationStatus('failed')
     }
   }
+
+  // Add new field element
+  const addFieldElement = (field: string) => {
+    if (!field) return
+    setFieldElements(prev => [...prev, { id: `fld-${Date.now()}-${Math.random().toString(36).slice(2)}`, field, x: (template.width || 800)/2, y: (template.height || 600)/2, fontSize: 32, color: '#000000', alignment: 'center' }])
+  }
+
+  const updateFieldElement = useCallback((id: string, updates: Partial<FieldElement>) => {
+    setFieldElements(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f))
+  }, [])
+
+  const removeFieldElement = (id: string) => {
+    setFieldElements(prev => prev.filter(f => f.id !== id))
+    if (selectedFieldId === id) setSelectedFieldId(null)
+  }
+
+  // Drag handlers
+  const handleFieldMouseDown = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    const rect = (e.currentTarget.parentElement as HTMLElement)?.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    dragState.current = { id, offsetX: x, offsetY: y }
+    setSelectedFieldId(id)
+  }
+
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragState.current) return
+    const container = e.currentTarget as HTMLDivElement
+    const rect = container.getBoundingClientRect()
+    const nx = e.clientX - rect.left
+    const ny = e.clientY - rect.top
+    const id = dragState.current.id
+    updateFieldElement(id, { x: Math.round(nx), y: Math.round(ny) })
+  }, [updateFieldElement])
+
+  const handleCanvasMouseUp = () => {
+    dragState.current = null
+  }
+
+  const selectedField = fieldElements.find(f => f.id === selectedFieldId) || null
 
   const downloadCsvTemplate = () => {
     const headers = ['name','email','registrationNumber','teamId','Department','Score']
@@ -210,11 +336,33 @@ The Team`)
 
     try {
       const batchId = generateUUID()
-      
+
+      // Create and set an initial email batch so the progress callback can update it
+      const initialBatch: EmailBatch = {
+        id: batchId,
+        name: `Certificate Email Batch ${batchId}`,
+        recipients: recipients.map(r => r.email),
+        subject: emailSubject,
+        body: emailBody,
+        status: 'processing',
+        progress: 0,
+        sent: 0,
+        failed: 0,
+        createdAt: new Date()
+      }
+
+      setEmailBatch(initialBatch)
+
       // Prepare recipients with certificate buffers
       const recipientsWithCertificates = recipients.map(recipient => {
         const cert = generatedCertificates.find(c => c.recipientId === recipient.id)
-        const pngBase64 = cert?.certificateUrl?.split(',')[1] || ''
+        if (!cert?.certificateUrl) {
+          throw new Error(`Certificate not found for recipient: ${recipient.name}`)
+        }
+        const pngBase64 = cert.certificateUrl.split(',')[1]
+        if (!pngBase64) {
+          throw new Error(`Invalid certificate data for recipient: ${recipient.name}`)
+        }
         return {
           email: recipient.email,
           name: recipient.name,
@@ -230,30 +378,30 @@ The Team`)
         emailBody,
         (p: CertificateBatchProgress) => {
           setProgress(p.progress)
-          setEmailBatch(prev => prev ? { ...prev, sent: p.sent, failed: p.failed, progress: p.progress, status: p.status } : prev)
+          setEmailBatch(prev => ({
+            ...(prev || initialBatch),
+            sent: p.sent,
+            failed: p.failed,
+            progress: p.progress,
+            status: p.status
+          }))
           if (p.status === 'completed') setEmailStatus('completed')
         }
       )
 
-      // Create a mock email batch for display purposes
-      const mockBatch: EmailBatch = {
-        id: result.batchId,
-        name: `Certificate Email Batch ${result.batchId}`,
-        recipients: recipients.map(r => r.email),
-        subject: emailSubject,
-        body: emailBody,
-        status: 'processing',
-        progress: 0,
-        sent: 0,
-        failed: 0,
-        createdAt: new Date()
+      // result may contain authoritative batchId or metadata; ensure id is synced
+      if (result && result.batchId && emailBatch?.id !== result.batchId) {
+        setEmailBatch(prev => prev ? { ...prev, id: result.batchId } : prev)
       }
-
-      setEmailBatch(mockBatch)
-  // status will be updated via callback
     } catch (error) {
       console.error('Error sending emails:', error)
       setEmailStatus('failed')
+      // Show more specific error message to user
+      if (error instanceof Error) {
+        alert(`Failed to send emails: ${error.message}`)
+      } else {
+        alert('Failed to send emails: Unknown error occurred')
+      }
     }
   }
 
@@ -271,7 +419,9 @@ The Team`)
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-6">
+    <>
+      <Navbar />
+      <div className="container mx-auto py-8 space-y-6">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Generate & Send Certificates</h1>
         <p className="text-muted-foreground">
@@ -308,6 +458,124 @@ The Team`)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowTemplates(v => !v)}>
+                  {showTemplates ? 'Hide Saved Templates' : 'Choose from Saved Templates'}
+                </Button>
+                {showTemplates && (
+                  <div className="mt-3 border rounded p-3 bg-gray-50 max-h-64 overflow-y-auto">
+                        {savedTemplates.length === 0 && <p className="text-sm text-muted-foreground">No saved templates found.</p>}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {savedTemplates.map((tpl, idx) => {
+                            // derive preview image and dimensions from snapshot
+                            const maybeBg = tpl.snapshot.backgroundImage
+                            const firstEl = tpl.snapshot.elements && tpl.snapshot.elements[0]
+                            const firstElSrc = firstEl && firstEl.properties && 'src' in firstEl.properties ? String(firstEl.properties['src']) : null
+                            const previewSrc = typeof maybeBg === 'string' && maybeBg ? maybeBg : (firstElSrc || null)
+                            const width = tpl.snapshot.canvasWidth || template.width
+                            const height = tpl.snapshot.canvasHeight || template.height
+
+                            const convertToCertificateTemplate = (): CertificateTemplate => {
+                              // Map editor snapshot to CertificateTemplate shape
+                              // Treat previewSrc (saved backgroundImage or first image element) as the template background
+                              // and skip any image elements that match it to avoid drawing the same image twice.
+                              const bgSrc = previewSrc || template.backgroundImage || undefined
+                              type LocalElement = { id: string; type: 'text' | 'qr' | 'image' | string; x: number; y: number; width?: number; height?: number; properties?: Record<string, unknown> }
+
+                              const elements: LocalElement[] = (tpl.snapshot.elements || [])
+                                .filter((el: SnapshotElement) => {
+                                  if (el.type === 'image' && el.properties && 'src' in el.properties) {
+                                    const srcVal = el.properties['src']
+                                    if (typeof srcVal === 'string' && bgSrc && srcVal === bgSrc) return false
+                                  }
+                                  return true
+                                })
+                                .map((el: SnapshotElement) => {
+                                  const props = el.properties || {}
+                                  if (el.type === 'text') {
+                                    const text = 'text' in props && typeof props['text'] === 'string' ? props['text'] as string : undefined
+                                    const placeholder = 'placeholder' in props && typeof props['placeholder'] === 'string' ? props['placeholder'] as string : undefined
+                                    const fontFamily = 'fontFamily' in props && typeof props['fontFamily'] === 'string' ? props['fontFamily'] as string : 'Arial'
+                                    const fontSize = ('fontSize' in props && typeof props['fontSize'] === 'number') ? (props['fontSize'] as number) : ('fontSize' in props ? Number(String(props['fontSize'])) : 24)
+                                    const color = 'color' in props && typeof props['color'] === 'string' ? props['color'] as string : '#000000'
+                                    const alignment = 'alignment' in props && typeof props['alignment'] === 'string' && (props['alignment'] === 'center' || props['alignment'] === 'right') ? (props['alignment'] as 'center' | 'right' | 'left') : 'left'
+                                    return {
+                                      id: el.id || `el-${Date.now()}`,
+                                      type: 'text' as const,
+                                      x: el.x || 0,
+                                      y: el.y || 0,
+                                      width: el.width || undefined,
+                                      height: el.height || undefined,
+                                      properties: { text, placeholder, fontFamily, fontSize, color, alignment }
+                                    }
+                                  }
+                                  if (el.type === 'qr-code' || el.type === 'qr') {
+                                    return {
+                                      id: el.id || `el-${Date.now()}`,
+                                      type: 'qr' as const,
+                                      x: el.x || 0,
+                                      y: el.y || 0,
+                                      width: el.width || 120,
+                                      height: el.height || 120,
+                                      properties: {}
+                                    }
+                                  }
+                                  if (el.type === 'image') {
+                                    const src = 'src' in props && typeof props['src'] === 'string' ? props['src'] as string : undefined
+                                    return {
+                                      id: el.id || `el-${Date.now()}`,
+                                      type: 'image' as const,
+                                      x: el.x || 0,
+                                      y: el.y || 0,
+                                      width: el.width || undefined,
+                                      height: el.height || undefined,
+                                      properties: { src }
+                                    }
+                                  }
+                                  // fallback: map to text
+                                  const fallbackText = 'text' in props && typeof props['text'] === 'string' ? props['text'] as string : ''
+                                  return {
+                                    id: el.id || `el-${Date.now()}`,
+                                    type: 'text' as const,
+                                    x: el.x || 0,
+                                    y: el.y || 0,
+                                    properties: { text: fallbackText }
+                                  }
+                                })
+
+                              const certTpl: CertificateTemplate = {
+                                id: tpl.id,
+                                name: tpl.name || `Template ${idx + 1}`,
+                                backgroundImage: previewSrc || template.backgroundImage || '',
+                                width: width,
+                                height: height,
+                                elements: elements as unknown as CertificateTemplate['elements'],
+                                hashFields: template.hashFields || ['name','registrationNumber'],
+                                salt: template.salt || undefined,
+                              }
+                              return certTpl
+                            }
+
+                            return (
+                              <div key={tpl.id || idx} className="border rounded p-2 flex flex-col gap-2 bg-white shadow-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{tpl.name || `Template ${idx + 1}`}</span>
+                                  <Badge variant="secondary" className="ml-auto">{(width && height) ? `${width}×${height}` : 'saved'}</Badge>
+                                </div>
+                                {previewSrc && (
+                                  <Image src={previewSrc} alt="bg" width={180} height={60} className="rounded border object-contain max-h-16" unoptimized />
+                                )}
+                                <div className="flex gap-2">
+                                  <Button type="button" size="sm" onClick={() => { setTemplate(convertToCertificateTemplate()); setShowTemplates(false); }}>Use Template</Button>
+                                  <Button type="button" size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(JSON.stringify(tpl.snapshot)); alert('Snapshot copied to clipboard') }}>Export Snapshot</Button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="templateName">Template Name</Label>
@@ -375,6 +643,56 @@ The Team`)
                   />
                 </div>
               </div>
+              {csvHeaders.length > 0 && (
+                <div className="space-y-3">
+                  <Label>Dynamic Fields Placement</Label>
+                  <p className="text-xs text-muted-foreground">Add placeholders for CSV columns and drag them into position on the certificate.</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <select className="border rounded px-2 py-1 text-sm" defaultValue="" onChange={(e) => { if (e.target.value) { addFieldElement(e.target.value); e.target.value=''; } }}>
+                      <option value="">Add field...</option>
+                      {csvHeaders.filter(h => !fieldElements.some(f => f.field === h)).map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    {selectedField && (
+                      <div className="flex gap-2 items-center flex-wrap">
+                        <label className="text-xs">Font Size
+                          <input type="number" className="border ml-1 w-16 px-1 py-0.5 rounded text-xs" value={selectedField.fontSize} onChange={(e)=>updateFieldElement(selectedField.id,{fontSize:Number(e.target.value)||12})} />
+                        </label>
+                        <label className="text-xs">Color
+                          <input type="color" className="ml-1" value={selectedField.color} onChange={(e)=>updateFieldElement(selectedField.id,{color:e.target.value})} />
+                        </label>
+                        <select className="border rounded px-2 py-1 text-xs" value={selectedField.alignment} onChange={(e)=>updateFieldElement(selectedField.id,{alignment:e.target.value as FieldElement['alignment']})}>
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
+                        <Button variant="destructive" size="sm" className="h-7" onClick={()=>removeFieldElement(selectedField.id)}>Delete</Button>
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    className="relative border rounded shadow-inner bg-white overflow-hidden select-none"
+                    style={{ width: template.width || 800, height: template.height || 600 }}
+                    onMouseMove={handleCanvasMouseMove}
+                    onMouseUp={handleCanvasMouseUp}
+                    onMouseLeave={handleCanvasMouseUp}
+                  >
+                    {template.backgroundImage && (
+                      <Image src={template.backgroundImage} alt="bg" fill style={{objectFit:'cover'}} className="pointer-events-none" unoptimized />
+                    )}
+                    {fieldElements.map(fe => (
+                      <div
+                        key={fe.id}
+                        onMouseDown={(e)=>handleFieldMouseDown(e, fe.id)}
+                        onClick={(e)=>{e.stopPropagation(); setSelectedFieldId(fe.id)}}
+                        className={`absolute cursor-move px-1 rounded ${selectedFieldId===fe.id ? 'ring-2 ring-blue-500 bg-white/70' : 'bg-white/60'} `}
+                        style={{ left: fe.x, top: fe.y, transform: 'translate(-50%, -50%)', fontSize: fe.fontSize, color: fe.color, textAlign: fe.alignment, fontFamily: 'Arial', minWidth: 40 as number }}
+                      >
+                        {`{{${fe.field}}}`}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <Label>CSV Template</Label>
                 <Button type="button" variant="outline" size="sm" className="mt-2" onClick={downloadCsvTemplate}>Download Sample CSV</Button>
@@ -653,6 +971,7 @@ The Team`)
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </>
   )
 }
